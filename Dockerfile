@@ -2,7 +2,7 @@ FROM python:3.11
 
 # Instalar Java e dependências do sistema
 RUN apt-get update && \
-    apt-get install -y default-jdk gcc && \
+    apt-get install -y default-jdk gcc build-essential libc6-dev && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
