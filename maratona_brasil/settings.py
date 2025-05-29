@@ -315,7 +315,7 @@ if DEBUG:
     import os
 
     # Debug
-    DEBUG = False  # Para produção
+    DEBUG = True  # Para produção
 
     # Allowed Hosts
     ALLOWED_HOSTS = ['maratona-programacao.onrender.com', 'localhost', '127.0.0.1']
