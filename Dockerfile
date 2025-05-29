@@ -1,13 +1,13 @@
-FROM python:3.11-slim
+FROM python:3.11
 
 # Instalar Java e dependências do sistema
 RUN apt-get update && \
-    apt-get install -y openjdk-11-jdk gcc && \
+    apt-get install -y default-jdk gcc && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
 # Configurar variáveis de ambiente do Java
-ENV JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64
+ENV JAVA_HOME=/usr/lib/jvm/default-java
 ENV PATH="$JAVA_HOME/bin:$PATH"
 
 # Verificar se Java foi instalado
