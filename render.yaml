@@ -3,7 +3,7 @@ services:
     name: maratona-programacao
     env: python
     buildCommand: "pip install -r requirements.txt"
-    startCommand: "gunicorn your_application.wsgi:application --host 0.0.0.0 --port $PORT"
+    startCommand: "gunicorn maratona_brasil.wsgi:application --host 0.0.0.0 --port $PORT"
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.0
