@@ -1,0 +1,482 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mapa da Maratona - Brasil</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link rel="stylesheet" href="{% static 'core/css/map.css' %}">
+    <style>
+        .map-container {
+            position: relative;
+            width: 100%;
+            height: 500px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            overflow: hidden;
+            background-color: #f8f9fa;
+        }
+        
+        #brazil-map {
+            width: 100%;
+            height: 100%;
+        }
+        
+        #brazil-map svg {
+            width: 100%;
+            height: 100%;
+        }
+        
+        .state-marker {
+            position: absolute;
+            z-index: 100;
+            transform: translate(-50%, -50%);
+            pointer-events: auto;
+        }
+        
+        .state-marker a {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 35px;
+            height: 35px;
+            border-radius: 50%;
+            text-decoration: none;
+            font-weight: bold;
+            font-size: 12px;
+            color: white;
+            border: 2px solid white;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+            transition: all 0.2s;
+        }
+        
+        .state-marker.available a {
+            background-color: #007bff;
+        }
+        
+        .state-marker.current a {
+            background-color: #ffc107;
+            color: #000;
+            animation: pulse 2s infinite;
+        }
+        
+        .state-marker.completed a {
+            background-color: #28a745;
+        }
+        
+        .state-marker.locked {
+            pointer-events: none;
+        }
+        
+        .state-marker.locked span {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 35px;
+            height: 35px;
+            border-radius: 50%;
+            background-color: #6c757d;
+            color: white;
+            font-size: 12px;
+            opacity: 0.5;
+            border: 2px solid white;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+        }
+        
+        .state-marker a:hover {
+            transform: scale(1.1);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.4);
+            color: white;
+            text-decoration: none;
+        }
+        
+        @keyframes pulse {
+            0% { box-shadow: 0 0 0 0 rgba(255, 193, 7, 0.7); }
+            70% { box-shadow: 0 0 0 10px rgba(255, 193, 7, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(255, 193, 7, 0); }
+        }
+        
+        .tooltip {
+            position: absolute;
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 8px 12px;
+            border-radius: 4px;
+            font-size: 12px;
+            pointer-events: none;
+            z-index: 1000;
+            display: none;
+            max-width: 200px;
+        }
+        
+        .tooltip.visible {
+            display: block;
+        }
+        
+        /* Cores das regiões no SVG */
+        .norte { fill: #5a9766 !important; opacity: 0.7; }
+        .nordeste { fill: #e15c5c !important; opacity: 0.7; }
+        .centro-oeste { fill: #f29c50 !important; opacity: 0.7; }
+        .sudeste { fill: #f1f176 !important; opacity: 0.7; }
+        .sul { fill: #7878c6 !important; opacity: 0.7; }
+        
+        /* Estados com diferentes status */
+        .completed { opacity: 0.9 !important; }
+        .current { opacity: 1 !important; stroke: #ffc107 !important; stroke-width: 2px !important; }
+        .available { opacity: 0.8 !important; }
+        .locked { opacity: 0.4 !important; }
+        
+        .loading-spinner {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+        }
+    </style>
+</head>
+<body>
+<div class="container mt-4">
+    
+    <!-- Navbar -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary rounded mb-4">
+        <div class="container-fluid">
+            <span class="navbar-brand">
+                <i class="fas fa-map-marked-alt me-2"></i>
+                Maratona de Programação - Brasil
+            </span>
+            {% if user.is_authenticated %}
+                <span class="navbar-text text-white">
+                    Olá, {{ user.username }}!
+                </span>
+            {% endif %}
+        </div>
+    </nav>
+
+    <div class="row">
+        <div class="col-md-8">
+            <div class="card mb-4">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="card-title mb-0">
+                        <i class="fas fa-map-marked-alt me-2"></i>Mapa da Maratona
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="map-container">
+                        <div id="brazil-map">
+                            <!-- Loading spinner -->
+                            <div class="loading-spinner">
+                                <div class="text-center">
+                                    <div class="spinner-border text-primary" role="status">
+                                        <span class="visually-hidden">Carregando...</span>
+                                    </div>
+                                    <p class="mt-2">Carregando mapa do Brasil...</p>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Marcadores dos estados - APENAS LINKS HTML -->
+                        {% for state in states_data %}
+                        <div class="state-marker
+                             {% if state.is_completed %}completed
+                             {% elif state.is_current %}current
+                             {% elif state.is_available %}available
+                             {% else %}locked{% endif %}
+                             {% if state.abbreviation == 'DF' %}final{% endif %}"
+                             id="marker-{{ state.abbreviation }}"
+                             style="left: {{ state.map_x_position }}%; top: {{ state.map_y_position }}%;"
+                             data-state-id="{{ state.id }}"
+                             data-challenge-id="{{ state.challenge_id }}"
+                             data-state-name="{{ state.name }}"
+                             data-order="{{ state.order }}"
+                             title="{{ state.order }}. {{ state.name }}">
+                            
+                            {% if state.is_available and state.challenge_id %}
+                                <!-- LINK HTML GARANTIDO -->
+                                <a href="{% url 'challenge-detail' state.challenge_id %}">
+                                    {% if state.abbreviation == 'DF' %}DF{% else %}{{ state.order }}{% endif %}
+                                </a>
+                            {% else %}
+                                <!-- Estado bloqueado -->
+                                <span>
+                                    {% if state.abbreviation == 'DF' %}DF{% else %}{{ state.order }}{% endif %}
+                                </span>
+                            {% endif %}
+                        </div>
+                        {% endfor %}
+                        
+                        <!-- Tooltip -->
+                        <div class="tooltip" id="map-tooltip"></div>
+                    </div>
+                    
+                    <!-- Legenda das regiões -->
+                    <div class="mt-3 p-3 bg-light rounded">
+                        <h6 class="mb-2">
+                            <i class="fas fa-palette me-2"></i>Legenda das Regiões
+                        </h6>
+                        <div class="d-flex flex-wrap justify-content-center">
+                            <div class="m-2 d-flex align-items-center">
+                                <div style="width: 20px; height: 20px; background-color: #5a9766; margin-right: 8px; border-radius: 3px;"></div>
+                                <span><strong>Norte</strong></span>
+                            </div>
+                            <div class="m-2 d-flex align-items-center">
+                                <div style="width: 20px; height: 20px; background-color: #e15c5c; margin-right: 8px; border-radius: 3px;"></div>
+                                <span><strong>Nordeste</strong></span>
+                            </div>
+                            <div class="m-2 d-flex align-items-center">
+                                <div style="width: 20px; height: 20px; background-color: #f29c50; margin-right: 8px; border-radius: 3px;"></div>
+                                <span><strong>Centro-Oeste</strong></span>
+                            </div>
+                            <div class="m-2 d-flex align-items-center">
+                                <div style="width: 20px; height: 20px; background-color: #f1f176; margin-right: 8px; border-radius: 3px;"></div>
+                                <span><strong>Sudeste</strong></span>
+                            </div>
+                            <div class="m-2 d-flex align-items-center">
+                                <div style="width: 20px; height: 20px; background-color: #7878c6; margin-right: 8px; border-radius: 3px;"></div>
+                                <span><strong>Sul</strong></span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-4">
+            <!-- Progresso do usuário -->
+            <div class="card mb-3">
+                <div class="card-header bg-success text-white">
+                    <h6 class="mb-0">
+                        <i class="fas fa-chart-line me-1"></i>Seu Progresso
+                    </h6>
+                </div>
+                <div class="card-body">
+                    <div class="row text-center">
+                        <div class="col-12">
+                            <h4 class="text-primary mb-1">{{ total_points }}</h4>
+                            <small class="text-muted">Pontos Totais</small>
+                        </div>
+                    </div>
+                    <hr>
+                    <p class="mb-2">
+                        <strong>Estado Atual:</strong><br>
+                        <span class="text-primary">{{ current_state.name|default:"Nenhum" }}</span>
+                    </p>
+                    <p class="mb-0">
+                        <strong>Desafios Completados:</strong><br>
+                        {{ completed_challenges }} de {{ states_data|length }}
+                    </p>
+                    <div class="progress mt-2">
+                        <div class="progress-bar bg-success" style="width: {% widthratio completed_challenges states_data|length 100 %}%"></div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Desafio atual -->
+            {% for state in states_data %}
+                {% if state.is_current and state.challenge_id %}
+                <div class="card mb-3">
+                    <div class="card-header bg-warning text-dark">
+                        <h6 class="mb-0">📍 Próximo Desafio</h6>
+                    </div>
+                    <div class="card-body">
+                        <h6>{{ state.order }}. {{ state.name }}</h6>
+                        <p class="small text-muted">{{ state.challenge_title }}</p>
+                        <a href="{% url 'challenge-detail' state.challenge_id %}" 
+                           class="btn btn-warning btn-sm w-100">
+                            <i class="fas fa-play me-1"></i>Começar Agora
+                        </a>
+                    </div>
+                </div>
+                {% endif %}
+            {% endfor %}
+            
+            <!-- Estados recentes -->
+            <div class="card">
+                <div class="card-header bg-info text-white">
+                    <h6 class="mb-0">
+                        <i class="fas fa-history me-1"></i>Estados Recentes
+                    </h6>
+                </div>
+                <div class="card-body p-0">
+                    <div class="list-group list-group-flush">
+                        {% for state in states_data %}
+                            {% if state.is_completed %}
+                                <div class="list-group-item d-flex justify-content-between align-items-center">
+                                    <div>
+                                        <small class="text-success">✅ {{ state.order }}. {{ state.name }}</small>
+                                    </div>
+                                    {% if state.challenge_id %}
+                                        <a href="{% url 'challenge-detail' state.challenge_id %}" 
+                                           class="btn btn-outline-success btn-sm">
+                                            <i class="fas fa-eye"></i>
+                                        </a>
+                                    {% endif %}
+                                </div>
+                            {% endif %}
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+
+<script>
+// JavaScript APENAS para carregar o SVG e tooltip - SEM interferir nos links
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('🗺️ Iniciando carregamento do mapa...');
+    
+    // Carregar o SVG do mapa - CAMINHO CORRETO
+    fetch('/static/core/images/brazil-map.svg')
+        .then(response => {
+            console.log('📡 Status do SVG:', response.status);
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+            return response.text();
+        })
+        .then(svgContent => {
+            console.log('✅ SVG carregado com sucesso!');
+            document.getElementById('brazil-map').innerHTML = svgContent;
+            
+            // Aplicar estilos às regiões
+            applyRegionStyles();
+            
+            // Configurar tooltips
+            setupTooltips();
+        })
+        .catch(error => {
+            console.error('❌ Erro ao carregar SVG:', error);
+            document.getElementById('brazil-map').innerHTML = 
+                '<div class="alert alert-warning h-100 d-flex align-items-center justify-content-center">' +
+                '<div class="text-center">' +
+                '<i class="fas fa-exclamation-triangle fa-2x mb-2 text-warning"></i><br>' +
+                '<strong>Mapa não disponível</strong><br>' +
+                '<small>Mas os links dos estados funcionam normalmente!</small>' +
+                '</div></div>';
+        });
+});
+
+function applyRegionStyles() {
+    const stateRegions = {
+        'AC': 'norte', 'AM': 'norte', 'RR': 'norte', 'AP': 'norte',
+        'PA': 'norte', 'RO': 'norte', 'TO': 'norte',
+        'MA': 'nordeste', 'PI': 'nordeste', 'CE': 'nordeste', 'RN': 'nordeste',
+        'PB': 'nordeste', 'PE': 'nordeste', 'AL': 'nordeste', 'SE': 'nordeste', 'BA': 'nordeste',
+        'MT': 'centro-oeste', 'MS': 'centro-oeste', 'GO': 'centro-oeste', 'DF': 'centro-oeste',
+        'MG': 'sudeste', 'ES': 'sudeste', 'RJ': 'sudeste', 'SP': 'sudeste',
+        'PR': 'sul', 'SC': 'sul', 'RS': 'sul'
+    };
+    
+    const svgElement = document.querySelector('#brazil-map svg');
+    if (!svgElement) {
+        console.log('⚠️ SVG não encontrado no DOM');
+        return;
+    }
+    
+    const stateElements = svgElement.querySelectorAll('path[id], circle[id]');
+    console.log(`🎨 Aplicando estilos a ${stateElements.length} elementos`);
+    
+    stateElements.forEach(element => {
+        const stateId = element.getAttribute('id');
+        const marker = document.querySelector(`#marker-${stateId}`);
+        
+        // Aplicar cor da região
+        if (stateId in stateRegions) {
+            element.classList.add(stateRegions[stateId]);
+        }
+        
+        // Aplicar status baseado no marcador
+        if (marker) {
+            if (marker.classList.contains('completed')) {
+                element.classList.add('completed');
+            } else if (marker.classList.contains('current')) {
+                element.classList.add('current');
+            } else if (marker.classList.contains('available')) {
+                element.classList.add('available');
+            } else {
+                element.classList.add('locked');
+            }
+        }
+    });
+    
+    console.log('✅ Estilos aplicados com sucesso!');
+}
+
+function setupTooltips() {
+    const markers = document.querySelectorAll('.state-marker');
+    const tooltip = document.getElementById('map-tooltip');
+    
+    if (!tooltip) {
+        console.log('⚠️ Tooltip não encontrado');
+        return;
+    }
+    
+    console.log(`🏷️ Configurando tooltips para ${markers.length} marcadores`);
+    
+    markers.forEach(marker => {
+        marker.addEventListener('mouseenter', function(e) {
+            const stateName = this.getAttribute('data-state-name');
+            const order = this.getAttribute('data-order');
+            
+            let status = 'Bloqueado 🔒';
+            let statusColor = '#6c757d';
+            
+            if (this.classList.contains('completed')) {
+                status = 'Completado ✅';
+                statusColor = '#28a745';
+            } else if (this.classList.contains('current')) {
+                status = 'Atual 📍';
+                statusColor = '#ffc107';
+            } else if (this.classList.contains('available')) {
+                status = 'Disponível 🔓';
+                statusColor = '#007bff';
+            }
+            
+            tooltip.innerHTML = `
+                <strong>${order}. ${stateName}</strong><br>
+                <span style="color: ${statusColor};">${status}</span>
+            `;
+            
+            tooltip.style.left = (e.pageX + 10) + 'px';
+            tooltip.style.top = (e.pageY - 40) + 'px';
+            tooltip.classList.add('visible');
+        });
+        
+        marker.addEventListener('mouseleave', function() {
+            tooltip.classList.remove('visible');
+        });
+        
+        marker.addEventListener('mousemove', function(e) {
+            if (tooltip.classList.contains('visible')) {
+                tooltip.style.left = (e.pageX + 10) + 'px';
+                tooltip.style.top = (e.pageY - 40) + 'px';
+            }
+        });
+    });
+    
+    console.log('✅ Tooltips configurados com sucesso!');
+}
+
+// Debug: Interceptar cliques APENAS para monitoramento
+document.addEventListener('click', function(e) {
+    if (e.target.closest('.state-marker a')) {
+        const link = e.target.closest('a');
+        console.log('🔗 Link clicado:', link.href);
+        
+        // Verificar se a URL está correta
+        if (link.href.includes('/challenges/challenge/')) {
+            console.log('❌ ERRO: URL incorreta detectada!');
+            e.preventDefault();
+            alert('Erro na URL detectado. Verificando configuração...');
+        } else {
+            console.log('✅ URL correta!');
+        }
+    }
+});
+</script>
+</body>
+</html>

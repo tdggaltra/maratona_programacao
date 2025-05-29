@@ -1,0 +1,113 @@
+<!-- challenges/templates/challenges/results.html -->
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Resultado da Submissão - Maratona Brasil{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.3.1/styles/default.min.css">
+<style>
+    .code-display {
+        max-height: 500px;
+        overflow-y: auto;
+        font-family: monospace;
+        font-size: 14px;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="card mb-4">
+    <div class="card-header 
+        {% if submission.status == 'accepted' %}bg-success
+        {% elif submission.status == 'pending' or submission.status == 'running' %}bg-warning
+        {% else %}bg-danger{% endif %} text-white">
+        <div class="d-flex justify-content-between align-items-center">
+            <h5 class="card-title mb-0">
+                Resultado da Submissão: {{ submission.get_status_display }}
+            </h5>
+            <span>{{ submission.submitted_at|date:"d/m/Y H:i:s" }}</span>
+        </div>
+    </div>
+    <div class="card-body">
+        <div class="row mb-4">
+            <div class="col-md-6">
+                <h6>Informações do Desafio</h6>
+                <ul class="list-group">
+                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                        Desafio:
+                        <span>{{ submission.challenge.title }}</span>
+                    </li>
+                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                        Estado:
+                        <span>{{ submission.challenge.state.name }}</span>
+                    </li>
+                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                        Linguagem:
+                        <span>{{ submission.language.name }}</span>
+                    </li>
+                </ul>
+            </div>
+            <div class="col-md-6">
+                <h6>Resultado</h6>
+                <ul class="list-group">
+                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                        Status:
+                        <span class="badge 
+                            {% if submission.status == 'accepted' %}bg-success
+                            {% elif submission.status == 'pending' or submission.status == 'running' %}bg-warning
+                            {% else %}bg-danger{% endif %}">
+                            {{ submission.get_status_display }}
+                        </span>
+                    </li>
+                    {% if submission.execution_time %}
+                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                        Tempo de Execução:
+                        <span>{{ submission.execution_time|floatformat:2 }} ms</span>
+                    </li>
+                    {% endif %}
+                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                        Submetido em:
+                        <span>{{ submission.submitted_at|date:"d/m/Y H:i:s" }}</span>
+                    </li>
+                </ul>
+            </div>
+        </div>
+        
+        {% if submission.error_message %}
+        <div class="alert alert-danger">
+            <h6>Mensagem de Erro:</h6>
+            <pre>{{ submission.error_message }}</pre>
+        </div>
+        {% endif %}
+        
+        <h6>Seu Código:</h6>
+        <pre><code class="language-{{ submission.language.name|lower }} code-display">{{ submission.code }}</code></pre>
+        
+        <div class="d-flex justify-content-between mt-4">
+            <a href="{% url 'challenge-detail' submission.challenge.id %}" class="btn btn-primary">
+                <i class="fas fa-arrow-left me-2"></i>Voltar ao Desafio
+            </a>
+            
+            {% if submission.status == 'accepted' %}
+            <a href="{% url 'home' %}" class="btn btn-success">
+                <i class="fas fa-map-marked-alt me-2"></i>Voltar ao Mapa
+            </a>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.3.1/highlight.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.3.1/languages/{{ submission.language.name|lower }}.min.js"></script>
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Inicializar o highlight.js para destacar a sintaxe do código
+        document.querySelectorAll('pre code').forEach((block) => {
+            hljs.highlightElement(block);
+        });
+    });
+</script>
+{% endblock %}

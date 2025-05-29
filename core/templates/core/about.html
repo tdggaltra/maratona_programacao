@@ -1,0 +1,79 @@
+<!-- core/templates/core/about.html -->
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Sobre - Maratona Brasil - UP{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="card-header bg-primary text-white">
+        <h5 class="card-title mb-0">Sobre a Maratona de Programação Brasil - UP</h5>
+    </div>
+    <div class="card-body">
+        <h4>O que é a Maratona de Programação Brasil?</h4>
+        <p>A <strong>Maratona de Programação Brasil</strong> é um projeto acadêmico que convida os participantes a explorar o Brasil através de desafios de programação. Cada estado brasileiro representa um desafio que deve ser resolvido para avançar até o destino final em Brasília.</p>
+
+        <h4>Como funciona?</h4>
+        <ul>
+            <li>Cada estado do Brasil contém um desafio de programação único</li>
+            <li>Os desafios são desbloqueados sequencialmente</li>
+            <li>Ao resolver um desafio, você ganha pontos e desbloqueia o próximo estado</li>
+            <li>Complete todos os desafios dos estados para chegar ao desafio final em Brasília</li>
+            <li>Sua pontuação é baseada no número de desafios completados e na eficiência das suas soluções</li>
+        </ul>
+
+        <h4>Regras</h4>
+        <ol>
+            <li>Cada submissão é avaliada automaticamente pelo sistema</li>
+            <li>As soluções devem ser implementadas na linguagem especificada para cada desafio</li>
+            <li>As soluções devem respeitar os limites de tempo de execução</li>
+            <li>Plágio não é permitido e resultará em desqualificação</li>
+            <li>Você pode enviar múltiplas soluções para cada desafio</li>
+        </ol>
+
+        <h4>Mapa das Regiões do Brasil</h4>
+        <div class="row mt-4 mb-4">
+            <div class="col-md-6 offset-md-3">
+                <div class="card">
+                    <div class="card-body text-center">
+                        <img src="{% static 'core/images/brazil-map.png' %}" alt="Mapa das Regiões do Brasil" class="img-fluid rounded" style="max-width: 100%;">
+                        <div class="mt-3">
+                            <div class="d-flex flex-wrap justify-content-center">
+                                <div class="m-2 d-flex align-items-center">
+                                    <div style="width: 20px; height: 20px; background-color: #5a9766; margin-right: 5px;"></div>
+                                    <span>Norte</span>
+                                </div>
+                                <div class="m-2 d-flex align-items-center">
+                                    <div style="width: 20px; height: 20px; background-color: #e15c5c; margin-right: 5px;"></div>
+                                    <span>Nordeste</span>
+                                </div>
+                                <div class="m-2 d-flex align-items-center">
+                                    <div style="width: 20px; height: 20px; background-color: #f29c50; margin-right: 5px;"></div>
+                                    <span>Centro-Oeste</span>
+                                </div>
+                                <div class="m-2 d-flex align-items-center">
+                                    <div style="width: 20px; height: 20px; background-color: #f1f176; margin-right: 5px;"></div>
+                                    <span>Sudeste</span>
+                                </div>
+                                <div class="m-2 d-flex align-items-center">
+                                    <div style="width: 20px; height: 20px; background-color: #7878c6; margin-right: 5px;"></div>
+                                    <span>Sul</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <h4>Equipe Organizadora</h4>
+        <p>Esta maratona foi desenvolvida como projeto acadêmico pelo Professor Dr. Tiago Dutra Galvão para os estudantes de Engenharia de Software e ADS da Universidade Positivo (Londrina), com o objetivo de promover o aprendizado prático de programação e algoritmos de forma lúdica e interativa.</p>
+
+        <div class="text-center mt-4">
+            <a href="{% url 'home' %}" class="btn btn-primary">
+                <i class="fas fa-map-marked-alt me-2"></i>Começar a Maratona
+            </a>
+        </div>
+    </div>
+</div>
+{% endblock %}

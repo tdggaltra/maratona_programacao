@@ -1,0 +1,41 @@
+/* static/css/main.css */
+body {
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+}
+
+main {
+    flex: 1;
+}
+
+.card {
+    box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+    border-radius: 0.5rem;
+    overflow: hidden;
+}
+
+.card-header {
+    border-bottom: none;
+}
+
+.btn {
+    border-radius: 0.375rem;
+}
+
+.table {
+    margin-bottom: 0;
+}
+
+.code-editor {
+    font-family: monospace;
+    resize: vertical;
+    min-height: 300px;
+}
+
+.example-box {
+    background-color: #f7f7f7;
+    padding: 15px;
+    border-radius: 5px;
+    font-family: monospace;
+}

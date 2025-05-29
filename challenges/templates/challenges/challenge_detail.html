@@ -1,0 +1,496 @@
+<!-- challenges/templates/challenges/challenge_detail.html -->
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}{{ challenge.title }} - Maratona Brasil{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.3.1/styles/default.min.css">
+<style>
+    .code-editor {
+        height: 400px;
+        resize: vertical;
+        font-family: monospace;
+        font-size: 14px;
+    }
+    .example-box {
+        background-color: #f7f7f7;
+        padding: 15px;
+        border-radius: 5px;
+        font-family: monospace;
+    }
+    
+    /* ADIÇÕES ESPECÍFICAS PARA JAVA */
+    .java-template {
+        background-color: #f8f9fa;
+        border: 1px dashed #6c757d;
+        border-radius: 6px;
+        padding: 1rem;
+        margin-bottom: 1rem;
+        font-family: monospace;
+        white-space: pre-line;
+        font-size: 0.9rem;
+    }
+    
+    .java-hint {
+        background-color: #e3f2fd;
+        border-left: 4px solid #2196f3;
+        padding: 0.75rem;
+        margin-bottom: 1rem;
+        border-radius: 0 4px 4px 0;
+    }
+    
+    .language-tips {
+        background-color: #f8f9fa;
+        border: 1px solid #e9ecef;
+        border-radius: 8px;
+        padding: 1rem;
+        margin-bottom: 1rem;
+    }
+    
+    /* NOVO: Área de resultado */
+    .result-area {
+        margin-top: 1rem;
+        padding: 1rem;
+        border-radius: 8px;
+        border: 2px solid;
+    }
+    .result-success {
+        background-color: #d4edda;
+        border-color: #c3e6cb;
+        color: #155724;
+    }
+    .result-error {
+        background-color: #f8d7da;
+        border-color: #f5c6cb;
+        color: #721c24;
+    }
+    .result-warning {
+        background-color: #fff3cd;
+        border-color: #ffeaa7;
+        color: #856404;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-lg-8">
+        <div class="card mb-4">
+            <div class="card-header bg-primary text-white">
+                <h5 class="card-title mb-0">{{ challenge.title }}</h5>
+            </div>
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <div>
+                        <span class="badge {% if challenge.difficulty == 'easy' %}bg-success{% elif challenge.difficulty == 'medium' %}bg-warning{% elif challenge.difficulty == 'hard' %}bg-danger{% elif challenge.difficulty == 'expert' %}bg-dark{% else %}bg-primary{% endif %} me-2">
+                            {{ challenge.get_difficulty_display }}
+                        </span>
+                        <span class="badge bg-info">{{ challenge.points }} pontos</span>
+                        <span class="badge bg-secondary">{{ challenge.language.name }}</span>
+                        {% if is_completed %}
+                            <span class="badge bg-success">✅ Completado</span>
+                        {% endif %}
+                    </div>
+                    <div>
+                        <small class="text-muted">Tempo limite: {{ challenge.time_limit }} ms</small>
+                    </div>
+                </div>
+                
+                <h6 class="mt-4">Descrição do Problema</h6>
+                <div class="problem-description mb-4">
+                    {{ challenge.description|linebreaks }}
+                </div>
+                
+                <h6>Entrada</h6>
+                <div class="mb-3">
+                    {{ challenge.input_description|linebreaks }}
+                </div>
+                
+                <h6>Saída</h6>
+                <div class="mb-3">
+                    {{ challenge.output_description|linebreaks }}
+                </div>
+                
+                <h6>Exemplo de Entrada</h6>
+                <pre class="example-box mb-3">{{ challenge.example_input }}</pre>
+                
+                <h6>Exemplo de Saída</h6>
+                <pre class="example-box mb-4">{{ challenge.example_output }}</pre>
+            </div>
+        </div>
+        
+        <div class="card mb-4">
+            <div class="card-header bg-success text-white">
+                <h5 class="card-title mb-0">Enviar Solução</h5>
+            </div>
+            <div class="card-body">
+                <!-- DICA ESPECÍFICA PARA JAVA -->
+                {% if challenge.language.name == 'Java' %}
+                <div class="java-hint">
+                    <small class="text-muted">
+                        <i class="fas fa-info-circle me-1"></i>
+                        <strong>Dica Java:</strong> Sua classe principal deve se chamar <code>Main</code> 
+                        e ter o método <code>public static void main(String[] args)</code>
+                    </small>
+                </div>
+
+                <div class="java-template mb-3">
+                    <small class="text-muted">💡 Template Java (você pode modificar):</small>
+                    <div class="mt-2">
+import java.util.Scanner;
+
+public class Main {
+    public static void main(String[] args) {
+        Scanner sc = new Scanner(System.in);
+        
+        // Seu código aqui
+        System.out.println("Olá, Mundo!");
+        
+        sc.close();
+    }
+}</div>
+                </div>
+                {% endif %}
+                
+                <!-- NOVO: Formulário com suporte AJAX -->
+                <form id="submission-form">
+                    {% csrf_token %}
+                    <div class="mb-3">
+                        <label for="code-editor" class="form-label">Código ({{ challenge.language.name }})</label>
+                        <textarea id="code-editor" name="code" class="form-control code-editor" required>{% if submissions.first %}{{ submissions.first.code }}{% elif challenge.language.name == 'Java' %}import java.util.Scanner;
+
+public class Main {
+    public static void main(String[] args) {
+        Scanner sc = new Scanner(System.in);
+        
+        // Seu código aqui
+        System.out.println("Olá, Mundo!");
+        
+        sc.close();
+    }
+}{% elif challenge.language.name == 'Python' %}texto = input().strip()
+palavras = texto.split()
+
+contador = {}
+for palavra in palavras:
+    contador[palavra] = contador.get(palavra, 0) + 1
+
+for palavra in sorted(contador.keys()):
+    print(f"{palavra}:{contador[palavra]}"){% elif challenge.language.name == 'C' %}#include <stdio.h>
+
+int main() {
+    // Seu código C aqui
+    printf("Olá, Mundo!\n");
+    return 0;
+}{% elif challenge.language.name == 'C++' %}#include <iostream>
+using namespace std;
+
+int main() {
+    // Seu código C++ aqui
+    cout << "Olá, Mundo!" << endl;
+    return 0;
+}{% else %}// Seu código aqui{% endif %}</textarea>
+                    </div>
+                    <div class="d-grid">
+                        <button type="submit" class="btn btn-success btn-lg" id="submit-btn">
+                            <i class="fas fa-paper-plane me-2"></i>Enviar Solução
+                        </button>
+                    </div>
+                </form>
+                
+                <!-- NOVO: Área de resultado -->
+                <div id="result-area" style="display: none;"></div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-lg-4">
+        <!-- Submissões anteriores -->
+        <div class="card mb-4">
+            <div class="card-header bg-info text-white">
+                <h5 class="card-title mb-0">Suas Submissões</h5>
+            </div>
+            <div class="card-body p-0">
+                {% if submissions %}
+                    <ul class="list-group list-group-flush">
+                        {% for submission in submissions %}
+                            <li class="list-group-item d-flex justify-content-between align-items-center">
+                                <div>
+                                    <span class="badge 
+                                        {% if submission.status == 'accepted' %}bg-success
+                                        {% elif submission.status == 'pending' or submission.status == 'running' %}bg-warning
+                                        {% else %}bg-danger{% endif %} me-2">
+                                        {{ submission.get_status_display }}
+                                    </span>
+                                    {{ submission.submitted_at|date:"d/m/Y H:i" }}
+                                </div>
+                                <a href="{% url 'submission-result' submission.id %}" class="btn btn-sm btn-outline-primary">
+                                    <i class="fas fa-eye me-1"></i>Ver
+                                </a>
+                            </li>
+                        {% endfor %}
+                    </ul>
+                {% else %}
+                    <div class="text-center py-3">
+                        <p class="text-muted mb-0">Você ainda não enviou soluções para este desafio.</p>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+        
+        <!-- Dicas específicas por linguagem -->
+        <div class="card">
+            <div class="card-header bg-warning">
+                <h5 class="card-title mb-0">Dicas e Informações</h5>
+            </div>
+            <div class="card-body">
+                <ul class="list-group list-group-flush">
+                    <li class="list-group-item">
+                        <i class="fas fa-info-circle me-2 text-primary"></i>
+                        <strong>Linguagem:</strong> {{ challenge.language.name }}
+                    </li>
+                    <li class="list-group-item">
+                        <i class="fas fa-lightbulb me-2 text-warning"></i>
+                        <strong>Dica:</strong> Leia atentamente os exemplos de entrada e saída.
+                    </li>
+                    <li class="list-group-item">
+                        <i class="fas fa-exclamation-triangle me-2 text-danger"></i>
+                        <strong>Atenção:</strong> O tempo limite é de {{ challenge.time_limit }} ms.
+                    </li>
+                </ul>
+                
+                <!-- DICAS ESPECÍFICAS POR LINGUAGEM -->
+                <div class="language-tips mt-3">
+                    {% if challenge.language.name == 'Java' %}
+                    <h6 class="text-primary"><i class="fab fa-java me-2"></i>Dicas para Java:</h6>
+                    <ul class="mb-0 small">
+                        <li>Use <code>Scanner sc = new Scanner(System.in);</code> para ler entrada</li>
+                        <li>Use <code>System.out.println()</code> para saída</li>
+                        <li>Não se esqueça de fechar o Scanner: <code>sc.close();</code></li>
+                        <li>Sua classe deve se chamar <strong>Main</strong></li>
+                        <li>Importe as classes necessárias: <code>import java.util.Scanner;</code></li>
+                    </ul>
+                    {% elif challenge.language.name == 'Python' %}
+                    <h6 class="text-primary"><i class="fab fa-python me-2"></i>Dicas para Python:</h6>
+                    <ul class="mb-0 small">
+                        <li>Use <code>input()</code> para ler entrada</li>
+                        <li>Use <code>print()</code> para saída</li>
+                        <li>Para converter texto em número: <code>int(input())</code></li>
+                        <li>Para múltiplas entradas: <code>input().split()</code></li>
+                        <li>Para o desafio de Sergipe: use <code>dict</code> para contar palavras</li>
+                    </ul>
+                    {% elif challenge.language.name == 'C' %}
+                    <h6 class="text-primary"><i class="fas fa-code me-2"></i>Dicas para C:</h6>
+                    <ul class="mb-0 small">
+                        <li>Use <code>scanf()</code> para ler entrada</li>
+                        <li>Use <code>printf()</code> para saída</li>
+                        <li>Não se esqueça de incluir: <code>#include &lt;stdio.h&gt;</code></li>
+                        <li>Termine strings com <code>\n</code> para quebra de linha</li>
+                    </ul>
+                    {% elif challenge.language.name == 'C++' %}
+                    <h6 class="text-primary"><i class="fas fa-code me-2"></i>Dicas para C++:</h6>
+                    <ul class="mb-0 small">
+                        <li>Use <code>cin</code> para ler entrada</li>
+                        <li>Use <code>cout</code> para saída</li>
+                        <li>Inclua: <code>#include &lt;iostream&gt;</code></li>
+                        <li>Use <code>endl</code> ou <code>\n</code> para quebra de linha</li>
+                    </ul>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        
+        <!-- NOVO: Botão voltar ao mapa -->
+        <div class="card">
+            <div class="card-body text-center">
+                <a href="{% url 'home' %}" class="btn btn-outline-primary">
+                    <i class="fas fa-map me-2"></i>Voltar ao Mapa
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.3.1/highlight.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.3.1/languages/{{ challenge.language.name|lower }}.min.js"></script>
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Inicializar o highlight.js para destacar a sintaxe do código
+        document.querySelectorAll('pre code').forEach((block) => {
+            hljs.highlightElement(block);
+        });
+    });
+    
+    // VALIDAÇÃO ESPECÍFICA PARA JAVA
+    function validateJavaCode(code) {
+        if (!code.includes('class')) {
+            alert('Seu código Java deve conter pelo menos uma classe!');
+            return false;
+        }
+        
+        if (!code.includes('public static void main')) {
+            if (!confirm('Seu código não tem um método main. Tem certeza que está correto?')) {
+                return false;
+            }
+        }
+        
+        return true;
+    }
+    
+    // NOVO: SUBMISSÃO VIA AJAX
+    document.getElementById('submission-form').addEventListener('submit', function(e) {
+        e.preventDefault();
+        
+        const codeEditor = document.getElementById('code-editor');
+        const code = codeEditor.value.trim();
+        
+        // Validação básica
+        if (!code) {
+            alert('Por favor, escreva seu código antes de enviar!');
+            return;
+        }
+        
+        // Validação específica para Java
+        const language = '{{ challenge.language.name }}';
+        if (language === 'Java') {
+            if (!validateJavaCode(code)) {
+                return;
+            }
+        }
+        
+        // Desabilita o botão
+        const submitBtn = document.getElementById('submit-btn');
+        const originalText = submitBtn.innerHTML;
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Processando...';
+        
+        // Submissão AJAX
+        fetch('{% url "submit-solution-ajax" challenge.pk %}', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+            },
+            body: JSON.stringify({
+                code: code
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            const resultArea = document.getElementById('result-area');
+            
+            if (data.success) {
+                if (data.status === 'accepted') {
+                    resultArea.innerHTML = `
+                        <div class="result-area result-success">
+                            <h5><i class="fas fa-check-circle me-2"></i>${data.message}</h5>
+                            ${data.points_earned > 0 ? `<p><strong>Pontos ganhos:</strong> ${data.points_earned}</p>` : ''}
+                            ${data.next_unlocked ? '<p class="mb-0"><i class="fas fa-star me-1"></i><strong>Próximo estado desbloqueado!</strong></p>' : ''}
+                        </div>
+                    `;
+                    
+                    // Recarrega a página se desbloqueou próximo estado
+                    if (data.next_unlocked) {
+                        setTimeout(() => {
+                            window.location.href = '{% url "home" %}';
+                        }, 3000);
+                    }
+                } else {
+                    let resultClass = 'result-error';
+                    if (data.status === 'compilation_error') resultClass = 'result-warning';
+                    if (data.status === 'time_limit') resultClass = 'result-warning';
+                    
+                    resultArea.innerHTML = `
+                        <div class="result-area ${resultClass}">
+                            <h5><i class="fas fa-exclamation-triangle me-2"></i>${data.status.replace('_', ' ').toUpperCase()}</h5>
+                            <p class="mb-0">${data.message}</p>
+                        </div>
+                    `;
+                }
+            } else {
+                resultArea.innerHTML = `
+                    <div class="result-area result-error">
+                        <h5><i class="fas fa-times-circle me-2"></i>Erro</h5>
+                        <p class="mb-0">${data.error}</p>
+                    </div>
+                `;
+            }
+            
+            resultArea.style.display = 'block';
+            resultArea.scrollIntoView({ behavior: 'smooth' });
+            
+            // Restaura botão
+            submitBtn.innerHTML = originalText;
+            submitBtn.disabled = false;
+        })
+        .catch(error => {
+            console.error('Erro:', error);
+            document.getElementById('result-area').innerHTML = `
+                <div class="result-area result-error">
+                    <h5><i class="fas fa-wifi me-2"></i>Erro de Conexão</h5>
+                    <p class="mb-0">Não foi possível submeter a solução. Tente novamente.</p>
+                </div>
+            `;
+            document.getElementById('result-area').style.display = 'block';
+            
+            submitBtn.innerHTML = originalText;
+            submitBtn.disabled = false;
+        });
+    });
+    
+    // SALVAR CÓDIGO NO LOCAL STORAGE (BACKUP LOCAL)
+    const STORAGE_KEY = 'challenge_{{ challenge.id }}_code';
+    const codeEditor = document.getElementById('code-editor');
+    
+    // Carregar código salvo
+    const savedCode = localStorage.getItem(STORAGE_KEY);
+    if (savedCode && savedCode.trim()) {
+        const currentCode = codeEditor.value.trim();
+        // Só carrega se não for o template padrão
+        const isDefaultTemplate = {% if challenge.language.name == 'Java' %}currentCode.includes('public class Main'){% elif challenge.language.name == 'Python' %}currentCode.includes('contador = {}'){% else %}false{% endif %};
+        
+        if (savedCode !== currentCode && !isDefaultTemplate) {
+            if (confirm('Encontramos um código salvo anteriormente. Deseja carregá-lo?')) {
+                codeEditor.value = savedCode;
+            }
+        }
+    }
+    
+    // Salvar código automaticamente
+    let saveTimer;
+    codeEditor.addEventListener('input', function() {
+        clearTimeout(saveTimer);
+        saveTimer = setTimeout(function() {
+            localStorage.setItem(STORAGE_KEY, codeEditor.value);
+        }, 2000); // Salva após 2 segundos de inatividade
+    });
+    
+    // Aviso antes de sair da página
+    window.addEventListener('beforeunload', function(e) {
+        const code = codeEditor.value.trim();
+        const language = '{{ challenge.language.name }}';
+        
+        // Define templates iniciais por linguagem
+        let initialTemplate = '';
+        if (language === 'Java') {
+            initialTemplate = 'public class Main';
+        } else if (language === 'Python') {
+            initialTemplate = 'contador = {}';
+        } else if (language === 'C') {
+            initialTemplate = '#include <stdio.h>';
+        } else if (language === 'C++') {
+            initialTemplate = '#include <iostream>';
+        }
+        
+        // Só avisa se há código significativo além do template
+        if (code && !code.includes(initialTemplate) && code !== '// Seu código aqui') {
+            e.preventDefault();
+            e.returnValue = 'Você tem código não salvo. Tem certeza que deseja sair?';
+            return 'Você tem código não salvo. Tem certeza que deseja sair?';
+        }
+    });
+</script>
+{% endblock %}

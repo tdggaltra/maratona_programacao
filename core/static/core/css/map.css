@@ -1,0 +1,142 @@
+/* static/core/css/map.css - Versão corrigida */
+/* Cores das regiões do Brasil */
+.norte { fill: #5a9766 !important; }        /* Verde */
+.nordeste { fill: #e15c5c !important; }     /* Vermelho */
+.centro-oeste { fill: #f29c50 !important; } /* Laranja */
+.sudeste { fill: #f1f176 !important; }      /* Amarelo */
+.sul { fill: #7878c6 !important; }          /* Azul */
+
+/* Status dos estados */
+.state {
+    transition: all 0.3s ease;
+    fill-opacity: 0.8;
+}
+
+.state.completed {
+    stroke: #198754;
+    stroke-width: 2px;
+    fill-opacity: 1;
+}
+
+.state.current {
+    stroke: #000;
+    stroke-width: 3px;
+    fill-opacity: 1;
+}
+
+.state.available {
+    stroke: #0d6efd;
+    stroke-width: 2px;
+    fill-opacity: 0.9;
+}
+
+.state.locked {
+    fill-opacity: 0.5;
+}
+
+/* Estados com hover */
+.state:hover {
+    fill-opacity: 0.7;
+    cursor: pointer;
+}
+
+.state.locked:hover {
+    cursor: not-allowed;
+}
+
+/* Marcadores dos estados */
+.state-marker {
+    position: absolute;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-weight: bold;
+    transform: translate(-50%, -50%);
+    z-index: 100;
+    cursor: pointer;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
+    border: 2px solid white;
+}
+
+.state-marker.completed {
+    background-color: #198754; /* Verde */
+}
+
+.state-marker.current, .state-marker.available {
+    background-color: #0d6efd; /* Azul */
+    animation: pulse 2s infinite;
+}
+
+.state-marker.locked {
+    background-color: #6c757d; /* Cinza */
+    opacity: 0.7;
+    cursor: not-allowed;
+}
+
+/* Marcador especial para DF */
+.state-marker.final {
+    background-color: #ffc107; /* Amarelo */
+    width: 40px;
+    height: 40px;
+    font-size: 16px;
+}
+
+@keyframes pulse {
+    0% {
+        transform: translate(-50%, -50%) scale(1);
+    }
+    50% {
+        transform: translate(-50%, -50%) scale(1.1);
+    }
+    100% {
+        transform: translate(-50%, -50%) scale(1);
+    }
+}
+
+/* Tooltip */
+.tooltip {
+    position: absolute;
+    background-color: #343a40;
+    color: white;
+    padding: 10px 15px;
+    border-radius: 4px;
+    font-size: 14px;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.3s;
+    z-index: 200;
+    max-width: 220px;
+    box-shadow: 0 3px 6px rgba(0, 0, 0, 0.2);
+}
+
+.tooltip.visible {
+    opacity: 0.95;
+}
+
+/* Container do mapa */
+.map-container {
+    position: relative;
+    width: 100%;
+    height: 600px;
+    overflow: hidden;
+    background-color: #f8f9fa;
+    border-radius: 8px;
+}
+
+#brazil-map {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+#brazil-map svg {
+    max-width: 100%;
+    max-height: 100%;
+    width: auto;
+}
