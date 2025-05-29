@@ -158,8 +158,8 @@ Este projeto está sob a licença MIT. Veja o arquivo [LICENSE](LICENSE) para de
 ## 👨‍💻 Autor
 
 **Seu Nome**
-- GitHub: [@seu-usuario](https://github.com/seu-usuario)
-- Email: seuemail@exemplo.com
+- GitHub: [@tdggaltra](https://github.com/tdggaltra)
+- Email: tdggalvao@gmail.com
 
 ## 🙏 Agradecimentos
 
