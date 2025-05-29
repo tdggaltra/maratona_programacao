@@ -1,6 +1,4 @@
-
 # challenges/urls.py
-
 from django.urls import path
 from . import views
 
@@ -11,8 +9,8 @@ urlpatterns = [
     # Submeter solução (método tradicional - mantém compatibilidade)
     path('<int:challenge_id>/submit/', views.submit_solution, name='submit-solution'),
     
-    # Submeter solução via AJAX (método moderno)
-    path('<int:pk>/submit/', views.submit_solution_ajax, name='submit-solution-ajax'),
+    # Submeter solução via AJAX (método moderno) - URL DIFERENTE
+    path('<int:pk>/submit-ajax/', views.submit_solution_ajax, name='submit-solution-ajax'),
     
     # Ver resultado de uma submissão específica
     path('submission/<int:submission_id>/', views.submission_result, name='submission-result'),
@@ -24,4 +22,3 @@ urlpatterns = [
     # NOVA URL para tela de parabéns
     path('congratulations/', views.congratulations, name='congratulations'),
 ]
-
