@@ -349,221 +349,291 @@ int main() {
         document.querySelectorAll('pre code').forEach((block) => {
             hljs.highlightElement(block);
         });
-    });
-    
-    // VALIDAÇÃO ESPECÍFICA PARA JAVA
-    function validateJavaCode(code) {
-        if (!code.includes('class')) {
-            alert('Seu código Java deve conter pelo menos uma classe!');
-            return false;
-        }
         
-        if (!code.includes('public static void main')) {
-            if (!confirm('Seu código não tem um método main. Tem certeza que está correto?')) {
+        const submitBtn = document.getElementById('submit-btn');
+        const codeEditor = document.getElementById('code-editor');
+        const form = document.getElementById('submission-form');
+        
+        // VALIDAÇÃO ESPECÍFICA PARA JAVA
+        function validateJavaCode(code) {
+            if (!code.includes('class')) {
+                alert('Seu código Java deve conter pelo menos uma classe!');
                 return false;
             }
+            
+            if (!code.includes('public static void main')) {
+                if (!confirm('Seu código não tem um método main. Tem certeza que está correto?')) {
+                    return false;
+                }
+            }
+            
+            return true;
         }
         
-        return true;
-    }
-    
-    // FUNÇÃO PARA CRIAR EFEITO DE CONFETES
-    function createConfetti() {
-        for (let i = 0; i < 20; i++) {
-            setTimeout(() => {
-                const confetti = document.createElement('div');
-                confetti.className = 'confetti-mini';
-                confetti.style.left = Math.random() * 100 + '%';
-                confetti.style.background = ['#ffd700', '#ff6b6b', '#4ecdc4', '#45b7d1', '#96ceb4'][Math.floor(Math.random() * 5)];
-                document.body.appendChild(confetti);
-                
+        // FUNÇÃO PARA CRIAR EFEITO DE CONFETES
+        function createConfetti() {
+            for (let i = 0; i < 20; i++) {
                 setTimeout(() => {
-                    confetti.remove();
-                }, 2000);
-            }, i * 100);
-        }
-    }
-    
-    // NOVO: SUBMISSÃO VIA AJAX ATUALIZADA
-    document.getElementById('submission-form').addEventListener('submit', function(e) {
-        e.preventDefault();
-        
-        const codeEditor = document.getElementById('code-editor');
-        const code = codeEditor.value.trim();
-        
-        // Validação básica
-        if (!code) {
-            alert('Por favor, escreva seu código antes de enviar!');
-            return;
-        }
-        
-        // Validação específica para Java
-        const language = '{{ challenge.language.name }}';
-        if (language === 'Java') {
-            if (!validateJavaCode(code)) {
-                return;
+                    const confetti = document.createElement('div');
+                    confetti.className = 'confetti-mini';
+                    confetti.style.left = Math.random() * 100 + '%';
+                    confetti.style.background = ['#ffd700', '#ff6b6b', '#4ecdc4', '#45b7d1', '#96ceb4'][Math.floor(Math.random() * 5)];
+                    document.body.appendChild(confetti);
+                    
+                    setTimeout(() => {
+                        confetti.remove();
+                    }, 2000);
+                }, i * 100);
             }
         }
         
-        // Desabilita o botão
-        const submitBtn = document.getElementById('submit-btn');
-        const originalText = submitBtn.innerHTML;
-        submitBtn.disabled = true;
-        submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Processando...';
-        
-        // Submissão AJAX
-        fetch('{% url "submit-solution-ajax" challenge.pk %}', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
-            },
-            body: JSON.stringify({
-                code: code
-            })
-        })
-        .then(response => response.json())
-        .then(data => {
-            const resultArea = document.getElementById('result-area');
+        // Função para obter CSRF token de forma robusta
+        function getCSRFToken() {
+            // Método 1: Input hidden
+            const csrfElement = document.querySelector('[name=csrfmiddlewaretoken]');
+            if (csrfElement) {
+                return csrfElement.value;
+            }
             
-            if (data.success) {
-                if (data.status === 'accepted') {
-                    // NOVO: Verificar se completou todos os desafios
-                    if (data.all_completed && data.is_final_state) {
-                        // Efeito especial para conclusão completa
-                        createConfetti();
-                        
-                        resultArea.innerHTML = `
-                            <div class="result-area completion-celebration">
-                                <h4><i class="fas fa-trophy me-2"></i>🎉 MISSÃO CUMPRIDA! 🎉</h4>
-                                <h5><i class="fas fa-check-circle me-2"></i>${data.message}</h5>
-                                ${data.points_earned > 0 ? `<p><strong>Pontos ganhos:</strong> ${data.points_earned}</p>` : ''}
-                                <div class="alert alert-warning mt-3">
-                                    <h5 class="alert-heading">🏆 PARABÉNS!</h5>
-                                    <p class="mb-2">Você completou TODOS os ${data.completed_count} desafios da Maratona Brasil!</p>
-                                    <p class="mb-2"><strong>Total de pontos:</strong> ${data.total_points}</p>
-                                    <hr>
-                                    <p class="mb-0">🚀 Redirecionando para sua tela de parabéns...</p>
-                                </div>
-                            </div>
-                        `;
-                        
-                        // Redireciona para a tela de parabéns após 4 segundos
-                        setTimeout(() => {
-                            window.location.href = '{% url "congratulations" %}';
-                        }, 4000);
-                        
-                    } else {
-                        // Submissão aceita normal
-                        resultArea.innerHTML = `
-                            <div class="result-area result-success">
-                                <h5><i class="fas fa-check-circle me-2"></i>${data.message}</h5>
-                                ${data.points_earned > 0 ? `<p><strong>Pontos ganhos:</strong> ${data.points_earned}</p>` : ''}
-                                ${data.next_unlocked ? '<p class="mb-0"><i class="fas fa-star me-1"></i><strong>Próximo estado desbloqueado!</strong></p>' : ''}
-                            </div>
-                        `;
-                        
-                        // Redireciona para o mapa se desbloqueou próximo estado
-                        if (data.next_unlocked) {
-                            setTimeout(() => {
-                                window.location.href = '{% url "home" %}';
-                            }, 3000);
-                        }
+            // Método 2: Meta tag
+            const metaToken = document.querySelector('meta[name="csrf-token"]');
+            if (metaToken) {
+                return metaToken.getAttribute('content');
+            }
+            
+            // Método 3: Cookie
+            const cookies = document.cookie.split(';');
+            for (let cookie of cookies) {
+                const [name, value] = cookie.trim().split('=');
+                if (name === 'csrftoken') {
+                    return decodeURIComponent(value);
+                }
+            }
+            
+            return null;
+        }
+        
+        // SUBMISSÃO VIA AJAX CORRIGIDA
+        if (form) {
+            form.addEventListener('submit', function(e) {
+                e.preventDefault();
+                
+                const code = codeEditor.value.trim();
+                
+                // Validação básica
+                if (!code) {
+                    alert('Por favor, escreva seu código antes de enviar!');
+                    return;
+                }
+                
+                // Validação específica para Java
+                const language = '{{ challenge.language.name }}';
+                if (language === 'Java') {
+                    if (!validateJavaCode(code)) {
+                        return;
                     }
-                } else {
-                    // Submissão rejeitada
-                    let resultClass = 'result-error';
-                    if (data.status === 'compilation_error') resultClass = 'result-warning';
-                    if (data.status === 'time_limit') resultClass = 'result-warning';
+                }
+                
+                // Desabilita o botão
+                const originalText = submitBtn.innerHTML;
+                submitBtn.disabled = true;
+                submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Processando...';
+                
+                const csrfToken = getCSRFToken();
+                const url = '{% url "submit-solution-ajax" challenge.pk %}';
+                
+                console.log('Debug info:');
+                console.log('URL:', url);
+                console.log('CSRF Token:', csrfToken ? 'Found' : 'Not found');
+                console.log('Code length:', code.length);
+                
+                // Submissão AJAX com tratamento robusto
+                fetch(url, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': csrfToken
+                    },
+                    body: JSON.stringify({
+                        code: code
+                    })
+                })
+                .then(response => {
+                    console.log('Response status:', response.status);
+                    console.log('Response ok:', response.ok);
                     
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                    }
+                    
+                    return response.json();
+                })
+                .then(data => {
+                    console.log('Response data:', data);
+                    
+                    const resultArea = document.getElementById('result-area');
+                    
+                    if (data.success) {
+                        if (data.status === 'accepted') {
+                            // Verificar se completou todos os desafios
+                            if (data.all_completed && data.is_final_state) {
+                                // Efeito especial para conclusão completa
+                                createConfetti();
+                                
+                                resultArea.innerHTML = `
+                                    <div class="result-area completion-celebration">
+                                        <h4><i class="fas fa-trophy me-2"></i>🎉 MISSÃO CUMPRIDA! 🎉</h4>
+                                        <h5><i class="fas fa-check-circle me-2"></i>${data.message}</h5>
+                                        ${data.points_earned > 0 ? `<p><strong>Pontos ganhos:</strong> ${data.points_earned}</p>` : ''}
+                                        <div class="alert alert-warning mt-3">
+                                            <h5 class="alert-heading">🏆 PARABÉNS!</h5>
+                                            <p class="mb-2">Você completou TODOS os ${data.completed_count || 27} desafios da Maratona Brasil!</p>
+                                            <p class="mb-2"><strong>Total de pontos:</strong> ${data.total_points || 0}</p>
+                                            <hr>
+                                            <p class="mb-0">🚀 Redirecionando para sua tela de parabéns...</p>
+                                        </div>
+                                    </div>
+                                `;
+                                
+                                // Redireciona para a tela de parabéns após 4 segundos
+                                setTimeout(() => {
+                                    window.location.href = '{% url "congratulations" %}';
+                                }, 4000);
+                                
+                            } else {
+                                // Submissão aceita normal
+                                resultArea.innerHTML = `
+                                    <div class="result-area result-success">
+                                        <h5><i class="fas fa-check-circle me-2"></i>${data.message}</h5>
+                                        ${data.points_earned > 0 ? `<p><strong>Pontos ganhos:</strong> ${data.points_earned}</p>` : ''}
+                                        ${data.next_unlocked ? '<p class="mb-0"><i class="fas fa-star me-1"></i><strong>Próximo estado desbloqueado!</strong></p>' : ''}
+                                    </div>
+                                `;
+                                
+                                // Redireciona para o mapa se desbloqueou próximo estado
+                                if (data.next_unlocked) {
+                                    setTimeout(() => {
+                                        window.location.href = '{% url "home" %}';
+                                    }, 3000);
+                                }
+                            }
+                        } else {
+                            // Submissão rejeitada
+                            let resultClass = 'result-error';
+                            if (data.status === 'compilation_error') resultClass = 'result-warning';
+                            if (data.status === 'time_limit') resultClass = 'result-warning';
+                            
+                            resultArea.innerHTML = `
+                                <div class="result-area ${resultClass}">
+                                    <h5><i class="fas fa-exclamation-triangle me-2"></i>${data.status.replace('_', ' ').toUpperCase()}</h5>
+                                    <p class="mb-0">${data.message}</p>
+                                </div>
+                            `;
+                        }
+                    } else {
+                        resultArea.innerHTML = `
+                            <div class="result-area result-error">
+                                <h5><i class="fas fa-times-circle me-2"></i>Erro</h5>
+                                <p class="mb-0">${data.error}</p>
+                            </div>
+                        `;
+                    }
+                    
+                    resultArea.style.display = 'block';
+                    resultArea.scrollIntoView({ behavior: 'smooth' });
+                })
+                .catch(error => {
+                    console.error('Fetch error:', error);
+                    
+                    const resultArea = document.getElementById('result-area');
                     resultArea.innerHTML = `
-                        <div class="result-area ${resultClass}">
-                            <h5><i class="fas fa-exclamation-triangle me-2"></i>${data.status.replace('_', ' ').toUpperCase()}</h5>
-                            <p class="mb-0">${data.message}</p>
+                        <div class="result-area result-error">
+                            <h4><i class="fas fa-exclamation-triangle me-2"></i>Erro de Conexão</h4>
+                            <p>Não foi possível submeter a solução.</p>
+                            <p><strong>Erro:</strong> ${error.message}</p>
+                            <div class="alert alert-danger mt-3">
+                                <h6>Possíveis soluções:</h6>
+                                <ul class="mb-0">
+                                    <li>Verifique sua conexão com a internet</li>
+                                    <li>Tente novamente em alguns segundos</li>
+                                    <li>Se o problema persistir, recarregue a página</li>
+                                </ul>
+                                <hr>
+                                <button type="button" class="btn btn-outline-primary btn-sm" onclick="location.reload()">
+                                    <i class="fas fa-redo me-1"></i>Recarregar Página
+                                </button>
+                            </div>
                         </div>
                     `;
+                    resultArea.style.display = 'block';
+                })
+                .finally(() => {
+                    // Restaurar botão sempre
+                    submitBtn.disabled = false;
+                    submitBtn.innerHTML = originalText;
+                });
+            });
+        }
+        
+        // SALVAR CÓDIGO NO LOCAL STORAGE (BACKUP LOCAL)
+        const STORAGE_KEY = 'challenge_{{ challenge.id }}_code';
+        
+        // Carregar código salvo
+        const savedCode = localStorage.getItem(STORAGE_KEY);
+        if (savedCode && savedCode.trim()) {
+            const currentCode = codeEditor.value.trim();
+            // Só carrega se não for o template padrão
+            const isDefaultTemplate = {% if challenge.language.name == 'Java' %}currentCode.includes('public class Main'){% elif challenge.language.name == 'Python' %}currentCode.includes('contador = {}'){% else %}false{% endif %};
+            
+            if (savedCode !== currentCode && !isDefaultTemplate) {
+                if (confirm('Encontramos um código salvo anteriormente. Deseja carregá-lo?')) {
+                    codeEditor.value = savedCode;
                 }
-            } else {
-                resultArea.innerHTML = `
-                    <div class="result-area result-error">
-                        <h5><i class="fas fa-times-circle me-2"></i>Erro</h5>
-                        <p class="mb-0">${data.error}</p>
-                    </div>
-                `;
             }
-            
-            resultArea.style.display = 'block';
-            resultArea.scrollIntoView({ behavior: 'smooth' });
-            
-            // Restaura botão
-            submitBtn.innerHTML = originalText;
-            submitBtn.disabled = false;
-        })
-        .catch(error => {
-            console.error('Erro:', error);
-            document.getElementById('result-area').innerHTML = `
-                <div class="result-area result-error">
-                    <h5><i class="fas fa-wifi me-2"></i>Erro de Conexão</h5>
-                    <p class="mb-0">Não foi possível submeter a solução. Tente novamente.</p>
-                </div>
-            `;
-            document.getElementById('result-area').style.display = 'block';
-            
-            submitBtn.innerHTML = originalText;
-            submitBtn.disabled = false;
+        }
+        
+        // Salvar código automaticamente
+        let saveTimer;
+        codeEditor.addEventListener('input', function() {
+            clearTimeout(saveTimer);
+            saveTimer = setTimeout(function() {
+                localStorage.setItem(STORAGE_KEY, codeEditor.value);
+            }, 2000); // Salva após 2 segundos de inatividade
         });
-    });
-    
-    // SALVAR CÓDIGO NO LOCAL STORAGE (BACKUP LOCAL)
-    const STORAGE_KEY = 'challenge_{{ challenge.id }}_code';
-    const codeEditor = document.getElementById('code-editor');
-    
-    // Carregar código salvo
-    const savedCode = localStorage.getItem(STORAGE_KEY);
-    if (savedCode && savedCode.trim()) {
-        const currentCode = codeEditor.value.trim();
-        // Só carrega se não for o template padrão
-        const isDefaultTemplate = {% if challenge.language.name == 'Java' %}currentCode.includes('public class Main'){% elif challenge.language.name == 'Python' %}currentCode.includes('contador = {}'){% else %}false{% endif %};
         
-        if (savedCode !== currentCode && !isDefaultTemplate) {
-            if (confirm('Encontramos um código salvo anteriormente. Deseja carregá-lo?')) {
-                codeEditor.value = savedCode;
+        // Auto-resize do textarea
+        codeEditor.addEventListener('input', function() {
+            this.style.height = 'auto';
+            this.style.height = Math.max(this.scrollHeight, 200) + 'px';
+        });
+        
+        // Trigger inicial para auto-resize
+        codeEditor.dispatchEvent(new Event('input'));
+        
+        // Aviso antes de sair da página
+        window.addEventListener('beforeunload', function(e) {
+            const code = codeEditor.value.trim();
+            const language = '{{ challenge.language.name }}';
+            
+            // Define templates iniciais por linguagem
+            let initialTemplate = '';
+            if (language === 'Java') {
+                initialTemplate = 'public class Main';
+            } else if (language === 'Python') {
+                initialTemplate = 'contador = {}';
+            } else if (language === 'C') {
+                initialTemplate = '#include <stdio.h>';
+            } else if (language === 'C++') {
+                initialTemplate = '#include <iostream>';
             }
-        }
-    }
-    
-    // Salvar código automaticamente
-    let saveTimer;
-    codeEditor.addEventListener('input', function() {
-        clearTimeout(saveTimer);
-        saveTimer = setTimeout(function() {
-            localStorage.setItem(STORAGE_KEY, codeEditor.value);
-        }, 2000); // Salva após 2 segundos de inatividade
-    });
-    
-    // Aviso antes de sair da página
-    window.addEventListener('beforeunload', function(e) {
-        const code = codeEditor.value.trim();
-        const language = '{{ challenge.language.name }}';
-        
-        // Define templates iniciais por linguagem
-        let initialTemplate = '';
-        if (language === 'Java') {
-            initialTemplate = 'public class Main';
-        } else if (language === 'Python') {
-            initialTemplate = 'contador = {}';
-        } else if (language === 'C') {
-            initialTemplate = '#include <stdio.h>';
-        } else if (language === 'C++') {
-            initialTemplate = '#include <iostream>';
-        }
-        
-        // Só avisa se há código significativo além do template
-        if (code && !code.includes(initialTemplate) && code !== '// Seu código aqui') {
-            e.preventDefault();
-            e.returnValue = 'Você tem código não salvo. Tem certeza que deseja sair?';
-            return 'Você tem código não salvo. Tem certeza que deseja sair?';
-        }
+            
+            // Só avisa se há código significativo além do template
+            if (code && !code.includes(initialTemplate) && code !== '// Seu código aqui') {
+                e.preventDefault();
+                e.returnValue = 'Você tem código não salvo. Tem certeza que deseja sair?';
+                return 'Você tem código não salvo. Tem certeza que deseja sair?';
+            }
+        });
     });
 </script>
 {% endblock %}
