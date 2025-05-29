@@ -160,7 +160,7 @@ CODE_EXECUTION = {
     'TEMP_DIR': BASE_DIR / 'temp_code_execution',
     
     # Configurações de segurança
-    'ENABLE_CODE_EXECUTION': DEBUG,  # Só ativado em desenvolvimento
+    'ENABLE_CODE_EXECUTION': True,  # Habilitar execução em produção também
     'MAX_EXECUTION_TIME': 10,  # segundos
     'MAX_MEMORY_USAGE': 256,   # MB
     'MAX_OUTPUT_SIZE': 1024 * 1024,  # 1MB
