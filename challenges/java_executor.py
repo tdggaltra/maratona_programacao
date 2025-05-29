@@ -149,7 +149,7 @@ class JavaCodeExecutor:
             try:
                 stdout, stderr = process.communicate(
                     input=test_input,
-                    timeout=self.time_limit
+                    timeout=max(self.time_limit, 10)
                 )
                 execution_time = (time.time() - start_time) * 1000  # ms
                 

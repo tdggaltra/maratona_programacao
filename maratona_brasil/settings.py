@@ -173,6 +173,7 @@ CODE_EXECUTION = {
         'MEMORY_LIMIT': 128,
         'CLASSPATH': '.',
         'POLICY_FILE': BASE_DIR / 'java.policy',
+        'TIMEOUT': 10,  # Aumentado de 5 para 10 segundos
         'JVM_ARGS': [
             '-Xmx128m',
             '-Xss1m',
