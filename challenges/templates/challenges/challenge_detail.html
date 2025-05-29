@@ -70,6 +70,33 @@
         border-color: #ffeaa7;
         color: #856404;
     }
+    
+    /* NOVO: Animações para conclusão completa */
+    .completion-celebration {
+        animation: celebration 1s ease-in-out;
+        background: linear-gradient(45deg, #ffd700, #ffed4e) !important;
+        border-color: #ffd700 !important;
+        color: #856404 !important;
+    }
+    
+    @keyframes celebration {
+        0% { transform: scale(1); }
+        50% { transform: scale(1.05); }
+        100% { transform: scale(1); }
+    }
+    
+    .confetti-mini {
+        position: absolute;
+        width: 6px;
+        height: 6px;
+        background: #ffd700;
+        animation: confetti-fall 2s linear;
+    }
+    
+    @keyframes confetti-fall {
+        0% { transform: translateY(-50px) rotate(0deg); opacity: 1; }
+        100% { transform: translateY(200px) rotate(360deg); opacity: 0; }
+    }
 </style>
 {% endblock %}
 
@@ -340,7 +367,24 @@ int main() {
         return true;
     }
     
-    // NOVO: SUBMISSÃO VIA AJAX
+    // FUNÇÃO PARA CRIAR EFEITO DE CONFETES
+    function createConfetti() {
+        for (let i = 0; i < 20; i++) {
+            setTimeout(() => {
+                const confetti = document.createElement('div');
+                confetti.className = 'confetti-mini';
+                confetti.style.left = Math.random() * 100 + '%';
+                confetti.style.background = ['#ffd700', '#ff6b6b', '#4ecdc4', '#45b7d1', '#96ceb4'][Math.floor(Math.random() * 5)];
+                document.body.appendChild(confetti);
+                
+                setTimeout(() => {
+                    confetti.remove();
+                }, 2000);
+            }, i * 100);
+        }
+    }
+    
+    // NOVO: SUBMISSÃO VIA AJAX ATUALIZADA
     document.getElementById('submission-form').addEventListener('submit', function(e) {
         e.preventDefault();
         
@@ -384,21 +428,50 @@ int main() {
             
             if (data.success) {
                 if (data.status === 'accepted') {
-                    resultArea.innerHTML = `
-                        <div class="result-area result-success">
-                            <h5><i class="fas fa-check-circle me-2"></i>${data.message}</h5>
-                            ${data.points_earned > 0 ? `<p><strong>Pontos ganhos:</strong> ${data.points_earned}</p>` : ''}
-                            ${data.next_unlocked ? '<p class="mb-0"><i class="fas fa-star me-1"></i><strong>Próximo estado desbloqueado!</strong></p>' : ''}
-                        </div>
-                    `;
-                    
-                    // Recarrega a página se desbloqueou próximo estado
-                    if (data.next_unlocked) {
+                    // NOVO: Verificar se completou todos os desafios
+                    if (data.all_completed && data.is_final_state) {
+                        // Efeito especial para conclusão completa
+                        createConfetti();
+                        
+                        resultArea.innerHTML = `
+                            <div class="result-area completion-celebration">
+                                <h4><i class="fas fa-trophy me-2"></i>🎉 MISSÃO CUMPRIDA! 🎉</h4>
+                                <h5><i class="fas fa-check-circle me-2"></i>${data.message}</h5>
+                                ${data.points_earned > 0 ? `<p><strong>Pontos ganhos:</strong> ${data.points_earned}</p>` : ''}
+                                <div class="alert alert-warning mt-3">
+                                    <h5 class="alert-heading">🏆 PARABÉNS!</h5>
+                                    <p class="mb-2">Você completou TODOS os ${data.completed_count} desafios da Maratona Brasil!</p>
+                                    <p class="mb-2"><strong>Total de pontos:</strong> ${data.total_points}</p>
+                                    <hr>
+                                    <p class="mb-0">🚀 Redirecionando para sua tela de parabéns...</p>
+                                </div>
+                            </div>
+                        `;
+                        
+                        // Redireciona para a tela de parabéns após 4 segundos
                         setTimeout(() => {
-                            window.location.href = '{% url "home" %}';
-                        }, 3000);
+                            window.location.href = '{% url "congratulations" %}';
+                        }, 4000);
+                        
+                    } else {
+                        // Submissão aceita normal
+                        resultArea.innerHTML = `
+                            <div class="result-area result-success">
+                                <h5><i class="fas fa-check-circle me-2"></i>${data.message}</h5>
+                                ${data.points_earned > 0 ? `<p><strong>Pontos ganhos:</strong> ${data.points_earned}</p>` : ''}
+                                ${data.next_unlocked ? '<p class="mb-0"><i class="fas fa-star me-1"></i><strong>Próximo estado desbloqueado!</strong></p>' : ''}
+                            </div>
+                        `;
+                        
+                        // Redireciona para o mapa se desbloqueou próximo estado
+                        if (data.next_unlocked) {
+                            setTimeout(() => {
+                                window.location.href = '{% url "home" %}';
+                            }, 3000);
+                        }
                     }
                 } else {
+                    // Submissão rejeitada
                     let resultClass = 'result-error';
                     if (data.status === 'compilation_error') resultClass = 'result-warning';
                     if (data.status === 'time_limit') resultClass = 'result-warning';

@@ -387,6 +387,8 @@ def evaluate_other_languages_existing(submission):
         submission.save()
         return {'status': 'runtime_error', 'message': f'Erro de execução: {str(e)}'}
     
+
+    
 # ADICIONE ESTAS FUNÇÕES ao final do seu challenges/views.py
 
 # Função para submissão AJAX (que faltava)
@@ -508,3 +510,144 @@ def leaderboard(request):
         }
     
     return render(request, 'challenges/leaderboard.html', context)
+
+@login_required
+@require_POST  
+def submit_solution_ajax(request, pk):
+    """View específica para submissões AJAX com detecção de conclusão"""
+    challenge = get_object_or_404(Challenge, pk=pk)
+    
+    try:
+        # Pega dados do JSON
+        data = json.loads(request.body)
+        code = data.get('code', '').strip()
+        
+        if not code:
+            return JsonResponse({
+                'success': False,
+                'error': 'Código não pode estar vazio'
+            })
+        
+        # Cria submissão
+        submission = Submission.objects.create(
+            challenge=challenge,
+            user=request.user,
+            code=code,
+            language=challenge.language,
+            status='pending'
+        )
+        
+        # Avalia usando sua função original
+        result = evaluate_submission(submission)
+        
+        # Se aceito, marca como completado
+        if result['status'] == 'accepted':
+            try:
+                profile = UserProfile.objects.get(user=request.user)
+            except UserProfile.DoesNotExist:
+                initial_state = BrazilState.objects.filter(order=1).first()
+                profile = UserProfile.objects.create(
+                    user=request.user,
+                    current_state=initial_state
+                )
+            
+            # Só adiciona pontos se ainda não completou
+            if not profile.completed_challenges.filter(id=challenge.id).exists():
+                profile.completed_challenges.add(challenge)
+                profile.total_points += challenge.points
+                profile.save()
+                
+                # Tenta desbloquear próximo estado
+                next_unlocked = profile.unlock_next_state()
+                
+                # NOVO: Verificar se completou TODOS os desafios
+                total_challenges = Challenge.objects.count()
+                completed_challenges = profile.completed_challenges.count()
+                all_completed = (completed_challenges == total_challenges)
+                
+                # NOVO: Verificar se é o último estado (Brasília/DF)
+                is_final_state = challenge.state.abbreviation == 'DF'
+                
+                return JsonResponse({
+                    'success': True,
+                    'status': 'accepted',
+                    'message': 'Parabéns! Solução aceita!',
+                    'points_earned': challenge.points,
+                    'next_unlocked': next_unlocked,
+                    'all_completed': all_completed,  # NOVO
+                    'is_final_state': is_final_state,  # NOVO
+                    'total_points': profile.total_points,  # NOVO
+                    'completed_count': completed_challenges,  # NOVO
+                })
+            else:
+                return JsonResponse({
+                    'success': True,
+                    'status': 'accepted',
+                    'message': 'Solução aceita! (já completado anteriormente)',
+                    'points_earned': 0,
+                    'next_unlocked': False,
+                    'all_completed': False,
+                    'is_final_state': False,
+                })
+        else:
+            return JsonResponse({
+                'success': True,
+                'status': result['status'],
+                'message': result.get('message', 'Erro na execução'),
+            })
+            
+    except Exception as e:
+        return JsonResponse({
+            'success': False,
+            'error': f'Erro interno: {str(e)}'
+        })
+
+# Adicione esta view ao seu challenges/views.py
+
+@login_required
+def congratulations(request):
+    """Tela de parabéns por completar todos os desafios"""
+    try:
+        profile = UserProfile.objects.get(user=request.user)
+        
+        # Verificar se realmente completou todos
+        total_challenges = Challenge.objects.count()
+        completed_challenges = profile.completed_challenges.count()
+        
+        if completed_challenges < total_challenges:
+            messages.warning(request, "Você ainda não completou todos os desafios!")
+            return redirect('home')
+        
+        # Estatísticas para mostrar na tela
+        total_points = profile.total_points
+        completion_percentage = 100
+        
+        # Desafios por região
+        states_stats = []
+        for state in BrazilState.objects.all().order_by('order'):
+            try:
+                challenge = state.challenge
+                is_completed = profile.completed_challenges.filter(id=challenge.id).exists()
+                states_stats.append({
+                    'state': state,
+                    'challenge': challenge,
+                    'completed': is_completed
+                })
+            except:
+                pass
+        
+        context = {
+            'profile': profile,
+            'total_points': total_points,
+            'completed_challenges': completed_challenges,
+            'total_challenges': total_challenges,
+            'completion_percentage': completion_percentage,
+            'states_stats': states_stats,
+        }
+        
+        return render(request, 'challenges/congratulations.html', context)
+        
+    except UserProfile.DoesNotExist:
+        messages.error(request, "Perfil não encontrado!")
+        return redirect('home')
+    

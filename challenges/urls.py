@@ -20,5 +20,8 @@ urlpatterns = [
     # URLs adicionais úteis (opcionais)
     path('submissions/', views.user_submissions, name='user-submissions'),
     path('leaderboard/', views.leaderboard, name='leaderboard'),
+    
+    # NOVA URL para tela de parabéns
+    path('congratulations/', views.congratulations, name='congratulations'),
 ]
 
