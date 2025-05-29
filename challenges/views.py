@@ -232,7 +232,7 @@ def evaluate_other_languages_existing(submission):
             elif language.name.lower() == 'c':
                 # Compila o código C
                 compile_proc = subprocess.run(
-                    ['gcc', temp_file_path, '-o', f'{temp_file_path}.out', '-std=c11', '-Wall'],
+                    ['gcc', temp_file_path, '-o', f'{temp_file_path}.out', '-std=c11', '-Wall', '-lm'],
                     capture_output=True,
                     text=True,
                     timeout=10
@@ -271,7 +271,9 @@ def evaluate_other_languages_existing(submission):
                         '-std=c++17',  # Padrão C++17
                         '-Wall',       # Avisos importantes
                         '-Wextra',     # Avisos extras
-                        '-O2'          # Otimização
+                        '-O2',
+                        '-lm'
+                                  # Otimização
                     ],
                     capture_output=True,
                     text=True,
