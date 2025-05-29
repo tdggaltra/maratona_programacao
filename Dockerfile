@@ -7,7 +7,7 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 
 # Configurar variáveis de ambiente do Java
-ENV JAVA_HOME=/usr/lib/jvm/default-java
+ENV JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64
 ENV PATH="$JAVA_HOME/bin:$PATH"
 
 # Verificar se Java foi instalado
@@ -39,4 +39,4 @@ RUN python manage.py collectstatic --noinput
 EXPOSE $PORT
 
 # Comando para iniciar aplicação
-CMD gunicorn maratona_brasil.wsgi:application --bind 0.0.0.0:$PORT
+CMD gunicorn maratona_brasil.wsgi:application --bind 0.0.0.0:${PORT:-10000}
