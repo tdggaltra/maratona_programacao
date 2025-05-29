@@ -311,8 +311,26 @@ if DEBUG:
     except ImportError:
         pass  # Debug toolbar não instalado
     
-    # Configurações para desenvolvimento local
-    ALLOWED_HOSTS = ['localhost', '127.0.0.1', '0.0.0.0']
+    # Configurações para desenvolvimento local e de produção
+    import os
+
+    # Debug
+    DEBUG = False  # Para produção
+
+    # Allowed Hosts
+    ALLOWED_HOSTS = ['maratona-programacao.onrender.com', 'localhost', '127.0.0.1']
+
+    # Static Files
+    STATIC_URL = '/static/'
+    STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
+
+    # Media Files (se usar)
+    MEDIA_URL = '/media/'
+    MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
+
+    # Security (opcional)
+    SECURE_BROWSER_XSS_FILTER = True
+    SECURE_CONTENT_TYPE_NOSNIFF = True
 
 # ==========================================
 # VALIDAÇÕES E CONFIGURAÇÕES FINAIS
