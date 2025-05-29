@@ -1,7 +1,5 @@
 # maratona_brasil/settings.py
 
-# maratona_brasil/settings.py
-
 import os
 from pathlib import Path
 
@@ -191,13 +189,13 @@ CODE_EXECUTION = {
     
     'C': {
         'COMPILER_PATH': 'gcc',
-        'COMPILER_FLAGS': ['-O2', '-std=c99'],
+        'COMPILER_FLAGS': ['-O2', '-std=c99', '-lm'],  # Adicionado -lm para bibliotecas matemáticas
         'TIMEOUT': 5,
     },
     
     'CPP': {
         'COMPILER_PATH': 'g++',
-        'COMPILER_FLAGS': ['-O2', '-std=c++17'],
+        'COMPILER_FLAGS': ['-O2', '-std=c++17', '-lm'],  # Adicionado -lm para bibliotecas matemáticas
         'TIMEOUT': 5,
     }
 }
