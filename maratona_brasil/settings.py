@@ -13,7 +13,7 @@ SECRET_KEY = os.environ.get('SECRET_KEY', 'sua-chave-secreta-aqui')
 DEBUG = os.environ.get('DEBUG', 'False').lower() == 'true'
 
 # Configuração para produção no Render
-ALLOWED_HOSTS = ['maratona-programacao.onrender.com', 'localhost', '127.0.0.1']
+ALLOWED_HOSTS = ['maratona-programacao.onrender.com', 'maratona-programacao-1.onrender.com', 'localhost', '127.0.0.1']
 
 # Aplicativos instalados
 INSTALLED_APPS = [
