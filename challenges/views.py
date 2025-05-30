@@ -131,92 +131,60 @@ def submit_solution(request, challenge_id):
     
     return redirect('challenge-detail', pk=challenge_id)
 
+# SUBSTITUA temporariamente a função submit_solution_ajax por esta versão de debug:
+
 @login_required
 @require_POST  
 def submit_solution_ajax(request, pk):
-    """View específica para submissões AJAX com detecção de conclusão"""
-    challenge = get_object_or_404(Challenge, pk=pk)
+    """View AJAX simplificada para debug"""
+    import traceback
+    import sys
     
     try:
-        # Pega dados do JSON
-        data = json.loads(request.body)
-        code = data.get('code', '').strip()
+        # Log básico
+        print(f"[DEBUG] AJAX called for challenge {pk}")
+        print(f"[DEBUG] User: {request.user}")
+        print(f"[DEBUG] Method: {request.method}")
+        
+        # Verificar se o desafio existe
+        challenge = get_object_or_404(Challenge, pk=pk)
+        print(f"[DEBUG] Challenge found: {challenge.title}")
+        
+        # Verificar dados JSON
+        try:
+            data = json.loads(request.body)
+            code = data.get('code', '').strip()
+            print(f"[DEBUG] Code received, length: {len(code)}")
+        except Exception as e:
+            print(f"[DEBUG] JSON error: {e}")
+            return JsonResponse({
+                'success': False,
+                'error': f'Erro JSON: {str(e)}'
+            })
         
         if not code:
             return JsonResponse({
                 'success': False,
-                'error': 'Código não pode estar vazio'
+                'error': 'Código vazio'
             })
         
-        # Cria submissão
-        submission = Submission.objects.create(
-            challenge=challenge,
-            user=request.user,
-            code=code,
-            language=challenge.language,
-            status='pending'
-        )
+        # Resposta de sucesso simples (sem criar submissão ainda)
+        return JsonResponse({
+            'success': True,
+            'status': 'debug',
+            'message': f'Debug OK - Challenge: {challenge.title}, Code length: {len(code)}',
+            'points_earned': 0,
+            'next_unlocked': False,
+            'all_completed': False,
+            'is_final_state': False,
+        })
         
-        # Avalia usando função original
-        result = evaluate_submission(submission)
-        
-        # Se aceito, marca como completado
-        if result['status'] == 'accepted':
-            try:
-                profile = UserProfile.objects.get(user=request.user)
-            except UserProfile.DoesNotExist:
-                initial_state = BrazilState.objects.filter(order=1).first()
-                profile = UserProfile.objects.create(
-                    user=request.user,
-                    current_state=initial_state
-                )
-            
-            # Só adiciona pontos se ainda não completou
-            if not profile.completed_challenges.filter(id=challenge.id).exists():
-                profile.completed_challenges.add(challenge)
-                profile.total_points += challenge.points
-                profile.save()
-                
-                # Tenta desbloquear próximo estado
-                next_unlocked = profile.unlock_next_state()
-                
-                # Verificar se completou TODOS os desafios
-                total_challenges = Challenge.objects.count()
-                completed_challenges = profile.completed_challenges.count()
-                all_completed = (completed_challenges == total_challenges)
-                
-                # Verificar se é o último estado (Brasília/DF)
-                is_final_state = challenge.state.abbreviation == 'DF'
-                
-                return JsonResponse({
-                    'success': True,
-                    'status': 'accepted',
-                    'message': 'Parabéns! Solução aceita!',
-                    'points_earned': challenge.points,
-                    'next_unlocked': next_unlocked,
-                    'all_completed': all_completed,
-                    'is_final_state': is_final_state,
-                    'total_points': profile.total_points,
-                    'completed_count': completed_challenges,
-                })
-            else:
-                return JsonResponse({
-                    'success': True,
-                    'status': 'accepted',
-                    'message': 'Solução aceita! (já completado anteriormente)',
-                    'points_earned': 0,
-                    'next_unlocked': False,
-                    'all_completed': False,
-                    'is_final_state': False,
-                })
-        else:
-            return JsonResponse({
-                'success': True,
-                'status': result['status'],
-                'message': result.get('message', 'Erro na execução'),
-            })
-            
     except Exception as e:
+        # Log detalhado do erro
+        error_info = traceback.format_exc()
+        print(f"[DEBUG] Exception: {e}")
+        print(f"[DEBUG] Traceback: {error_info}")
+        
         return JsonResponse({
             'success': False,
             'error': f'Erro interno: {str(e)}'
