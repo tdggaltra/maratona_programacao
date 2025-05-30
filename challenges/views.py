@@ -1175,3 +1175,274 @@ def submit_solution_ajax_debug(request, pk):
             'language': challenge.language.name
         }
     })
+
+@csrf_exempt
+def debug_challenge_data(request, challenge_id):
+    """
+    Debug específico para um desafio
+    """
+    try:
+        challenge = Challenge.objects.get(id=challenge_id)
+        
+        # Dados básicos
+        response_data = {
+            'challenge_id': challenge.id,
+            'title': challenge.title,
+            'state': challenge.state.name,
+            'language': challenge.language.name,
+            'difficulty': challenge.difficulty,
+            'points': challenge.points,
+            'time_limit': challenge.time_limit,
+            'test_cases_info': {},
+            'validation_errors': [],
+            'encoding_issues': []
+        }
+        
+        # Analisar test_cases
+        if challenge.test_cases:
+            response_data['test_cases_info'] = {
+                'type': type(challenge.test_cases).__name__,
+                'count': len(challenge.test_cases),
+                'cases': []
+            }
+            
+            for i, test_case in enumerate(challenge.test_cases):
+                case_info = {
+                    'index': i,
+                    'type': type(test_case).__name__,
+                    'valid': True,
+                    'errors': []
+                }
+                
+                if isinstance(test_case, dict):
+                    case_info['keys'] = list(test_case.keys())
+                    
+                    # Verificar campos obrigatórios
+                    if 'input' not in test_case:
+                        case_info['errors'].append('Missing input field')
+                        case_info['valid'] = False
+                    
+                    if 'output' not in test_case:
+                        case_info['errors'].append('Missing output field')
+                        case_info['valid'] = False
+                    
+                    # Verificar tipos
+                    input_val = test_case.get('input')
+                    output_val = test_case.get('output')
+                    
+                    case_info['input_type'] = type(input_val).__name__
+                    case_info['output_type'] = type(output_val).__name__
+                    
+                    # Verificar encoding
+                    for field_name, field_val in [('input', input_val), ('output', output_val)]:
+                        if field_val is not None:
+                            try:
+                                str(field_val).encode('utf-8')
+                            except Exception as e:
+                                case_info['errors'].append(f'{field_name} encoding error: {str(e)}')
+                                case_info['valid'] = False
+                    
+                    # Verificar se são strings ou podem ser convertidas
+                    try:
+                        str(input_val)
+                        str(output_val)
+                    except Exception as e:
+                        case_info['errors'].append(f'String conversion error: {str(e)}')
+                        case_info['valid'] = False
+                
+                else:
+                    case_info['errors'].append('Test case is not a dictionary')
+                    case_info['valid'] = False
+                
+                response_data['test_cases_info']['cases'].append(case_info)
+                
+                if not case_info['valid']:
+                    response_data['validation_errors'].extend(case_info['errors'])
+        
+        # Tentar serialização JSON
+        try:
+            json.dumps(challenge.test_cases, ensure_ascii=False)
+            response_data['json_serializable'] = True
+        except Exception as e:
+            response_data['json_serializable'] = False
+            response_data['json_error'] = str(e)
+        
+        # Verificar campos de texto
+        text_fields = ['description', 'input_description', 'output_description', 'example_input', 'example_output']
+        response_data['text_fields'] = {}
+        
+        for field in text_fields:
+            value = getattr(challenge, field, None)
+            field_info = {
+                'has_value': value is not None and value != '',
+                'length': len(value) if value else 0,
+                'utf8_valid': True
+            }
+            
+            if value:
+                try:
+                    value.encode('utf-8')
+                except Exception as e:
+                    field_info['utf8_valid'] = False
+                    field_info['encoding_error'] = str(e)
+                    response_data['encoding_issues'].append(f'{field}: {str(e)}')
+            
+            response_data['text_fields'][field] = field_info
+        
+        return JsonResponse(response_data)
+        
+    except Challenge.DoesNotExist:
+        return JsonResponse({
+            'error': f'Challenge {challenge_id} not found'
+        }, status=404)
+    except Exception as e:
+        return JsonResponse({
+            'error': f'Debug error: {str(e)}'
+        }, status=500)
+    
+@csrf_exempt
+def debug_environment(request):
+    """Debug de ambiente para comparar local vs Render"""
+    import sys
+    import platform
+    import subprocess
+    import tempfile
+    import os
+    
+    env_info = {
+        'python_version': sys.version,
+        'platform': platform.platform(),
+        'architecture': platform.architecture(),
+        'temp_dir': tempfile.gettempdir(),
+        'java_available': False,
+        'javac_available': False,
+        'can_create_temp': False,
+        'can_compile_java': False,
+        'challenges_count': 0,
+        'challenge_253_exists': False
+    }
+    
+    # Verificar Java
+    try:
+        result = subprocess.run(['java', '-version'], 
+                              capture_output=True, text=True, timeout=5)
+        env_info['java_available'] = result.returncode == 0
+        if result.returncode == 0:
+            env_info['java_version'] = result.stderr.strip().split('\n')[0]
+    except:
+        pass
+    
+    # Verificar Javac
+    try:
+        result = subprocess.run(['javac', '-version'], 
+                              capture_output=True, text=True, timeout=5)
+        env_info['javac_available'] = result.returncode == 0
+        if result.returncode == 0:
+            env_info['javac_version'] = result.stderr.strip()
+    except:
+        pass
+    
+    # Verificar temp files
+    try:
+        temp_dir = tempfile.mkdtemp()
+        env_info['can_create_temp'] = True
+        env_info['temp_dir_writable'] = os.access(temp_dir, os.W_OK)
+        
+        # Tentar compilar Java
+        test_file = os.path.join(temp_dir, "Test.java")
+        with open(test_file, 'w') as f:
+            f.write("public class Test { public static void main(String[] args) { System.out.println(\"test\"); } }")
+        
+        compile_result = subprocess.run(['javac', test_file], 
+                                      capture_output=True, text=True, timeout=10)
+        env_info['can_compile_java'] = compile_result.returncode == 0
+        if compile_result.returncode != 0:
+            env_info['compile_error'] = compile_result.stderr
+        
+        import shutil
+        shutil.rmtree(temp_dir)
+        
+    except Exception as e:
+        env_info['temp_error'] = str(e)
+    
+    # Verificar banco de dados
+    try:
+        from challenges.models import Challenge
+        env_info['challenges_count'] = Challenge.objects.count()
+        env_info['challenge_253_exists'] = Challenge.objects.filter(id=253).exists()
+        
+        if env_info['challenge_253_exists']:
+            challenge = Challenge.objects.get(id=253)
+            env_info['challenge_253_data'] = {
+                'title': challenge.title,
+                'language': challenge.language.name,
+                'test_cases_count': len(challenge.test_cases),
+                'test_cases_type': type(challenge.test_cases).__name__
+            }
+    except Exception as e:
+        env_info['db_error'] = str(e)
+    
+    return JsonResponse(env_info)
+
+@login_required
+@csrf_exempt
+def test_challenge_253(request):
+    """Teste específico do challenge 253 no Render"""
+    
+    try:
+        # Código Fibonacci simples
+        fibonacci_code = '''public class Fibonacci {
+    public static void main(String[] args) {
+        java.util.Scanner scanner = new java.util.Scanner(System.in);
+        int n = scanner.nextInt();
+        
+        if (n <= 0) {
+            System.out.println("0");
+            return;
+        }
+        if (n == 1 || n == 2) {
+            System.out.println("1");
+            return;
+        }
+        
+        int a = 1, b = 1;
+        for (int i = 3; i <= n; i++) {
+            int temp = a + b;
+            a = b;
+            b = temp;
+        }
+        System.out.println(b);
+    }
+}'''
+        
+        # Buscar challenge
+        challenge = Challenge.objects.get(id=253)
+        
+        # Criar submissão de teste
+        submission = Submission.objects.create(
+            challenge=challenge,
+            user=request.user,
+            code=fibonacci_code,
+            language=challenge.language,
+            status='pending'
+        )
+        
+        # Avaliar
+        from .java_executor import evaluate_java_submission
+        result = evaluate_java_submission(submission)
+        
+        return JsonResponse({
+            'success': True,
+            'submission_id': submission.id,
+            'result': result,
+            'submission_status': submission.status,
+            'execution_time': submission.execution_time,
+            'error_message': submission.error_message
+        })
+        
+    except Exception as e:
+        return JsonResponse({
+            'success': False,
+            'error': str(e),
+            'traceback': traceback.format_exc()
+        })

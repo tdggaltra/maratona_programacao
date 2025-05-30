@@ -26,4 +26,9 @@ urlpatterns = [
 
     path('challenge/<int:pk>/submit-debug/', views.submit_solution_ajax_debug, name='submit-solution-ajax-debug'),
 
+    path('debug/challenge/<int:challenge_id>/', views.debug_challenge_data, name='debug-challenge-data'),
+
+    path('debug/environment/', views.debug_environment, name='debug-environment'),
+    path('test/challenge/253/', views.test_challenge_253, name='test-challenge-253'),
+
 ]
