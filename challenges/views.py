@@ -599,7 +599,8 @@ def evaluate_submission(submission):
         
         # Avaliação por linguagem
         if language.name.lower() == 'java':
-            return evaluate_java_submission(submission)
+            from .java_executor_render import evaluate_java_submission_render
+            return evaluate_java_submission_render(submission)
         else:
             return evaluate_other_languages_improved(submission)
             
