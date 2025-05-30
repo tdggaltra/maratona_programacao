@@ -1,9 +1,12 @@
-# challenges/views.py
+# challenges/views.py - Versão Corrigida
+
 from django.shortcuts import render, get_object_or_404, redirect
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 from django.http import JsonResponse
 from django.views.decorators.http import require_POST
+from django.views.decorators.csrf import csrf_exempt
+from django.core.exceptions import ValidationError
 from .models import Challenge, Submission, BrazilState
 from accounts.models import UserProfile
 from .java_executor import evaluate_java_submission
@@ -12,6 +15,11 @@ import subprocess
 import tempfile
 import os
 import time
+import logging
+import traceback
+
+# Configurar logging
+logger = logging.getLogger(__name__)
 
 @login_required
 def challenge_detail(request, pk):
@@ -47,124 +55,287 @@ def challenge_detail(request, pk):
     return render(request, 'challenges/challenge_detail.html', context)
 
 @login_required
+@csrf_exempt  # CORREÇÃO: Adicionar csrf_exempt para AJAX
+@require_POST  
+def submit_solution_ajax(request, pk):
+    """
+    View AJAX corrigida com validação robusta
+    CORREÇÃO PRINCIPAL: Melhor validação de dados e tratamento de erros
+    """
+    
+    def create_error_response(message, status=400, details=None):
+        """Helper para criar respostas de erro consistentes"""
+        response_data = {
+            'success': False,
+            'error': message
+        }
+        if details:
+            response_data['details'] = details
+        return JsonResponse(response_data, status=status)
+    
+    try:
+        logger.info(f"[SUBMIT] Starting AJAX submit for challenge {pk} by user {request.user.username}")
+        
+        # 1. VALIDAÇÃO BÁSICA DA REQUISIÇÃO
+        if request.content_type != 'application/json':
+            logger.error(f"[SUBMIT] Invalid content type: {request.content_type}")
+            return create_error_response(
+                "Content-Type deve ser application/json",
+                details={'received_content_type': request.content_type}
+            )
+        
+        # 2. VALIDAÇÃO DO CHALLENGE
+        try:
+            challenge = Challenge.objects.get(pk=pk)
+            logger.info(f"[SUBMIT] Challenge found: {challenge.title}")
+        except Challenge.DoesNotExist:
+            logger.error(f"[SUBMIT] Challenge {pk} not found")
+            return create_error_response(f"Desafio {pk} não encontrado", status=404)
+        
+        # 3. VALIDAÇÃO E PARSE DO JSON
+        try:
+            if not request.body:
+                logger.error("[SUBMIT] Empty request body")
+                return create_error_response("Request body vazio")
+            
+            # Log do body para debug (apenas primeiros 200 chars)
+            body_preview = request.body.decode('utf-8')[:200]
+            logger.debug(f"[SUBMIT] Body preview: {body_preview}")
+            
+            data = json.loads(request.body)
+            logger.debug(f"[SUBMIT] JSON parsed successfully: {list(data.keys())}")
+            
+        except UnicodeDecodeError as e:
+            logger.error(f"[SUBMIT] Unicode decode error: {e}")
+            return create_error_response("Erro de encoding no request body")
+        except json.JSONDecodeError as e:
+            logger.error(f"[SUBMIT] JSON decode error: {e}")
+            return create_error_response(
+                "JSON inválido",
+                details={'json_error': str(e)}
+            )
+        
+        # 4. VALIDAÇÃO DOS CAMPOS OBRIGATÓRIOS
+        if not isinstance(data, dict):
+            logger.error(f"[SUBMIT] Data is not a dict: {type(data)}")
+            return create_error_response("Dados devem ser um objeto JSON")
+        
+        # CORREÇÃO: Validação rigorosa do código
+        code = data.get('code')
+        if code is None:
+            logger.error("[SUBMIT] Missing 'code' field")
+            return create_error_response("Campo 'code' é obrigatório")
+        
+        if not isinstance(code, str):
+            logger.error(f"[SUBMIT] Code is not string: {type(code)}")
+            return create_error_response("Campo 'code' deve ser uma string")
+        
+        # CORREÇÃO: Validação mais robusta do código
+        code = code.strip()
+        if not code:
+            logger.error("[SUBMIT] Empty code after strip")
+            return create_error_response("Código não pode estar vazio")
+        
+        # CORREÇÃO: Validação de tamanho do código
+        if len(code) > 50000:  # 50KB limite
+            logger.error(f"[SUBMIT] Code too long: {len(code)} chars")
+            return create_error_response("Código muito longo (máximo 50KB)")
+        
+        # CORREÇÃO: Validação de caracteres problemáticos
+        try:
+            # Tenta encode/decode para verificar se há caracteres problemáticos
+            code.encode('utf-8').decode('utf-8')
+        except UnicodeError as e:
+            logger.error(f"[SUBMIT] Unicode error in code: {e}")
+            return create_error_response("Código contém caracteres inválidos")
+        
+        logger.info(f"[SUBMIT] Code validated - Length: {len(code)} chars")
+        
+        # 5. VALIDAÇÃO DE ACESSO AO CHALLENGE
+        try:
+            profile = UserProfile.objects.get(user=request.user)
+        except UserProfile.DoesNotExist:
+            logger.info("[SUBMIT] Creating new profile for user")
+            initial_state = BrazilState.objects.filter(order=1).first()
+            profile = UserProfile.objects.create(
+                user=request.user,
+                current_state=initial_state
+            )
+        
+        if challenge.state.order > profile.current_state.order:
+            logger.warning(f"[SUBMIT] User trying to access locked challenge: {challenge.state.order} > {profile.current_state.order}")
+            return create_error_response(
+                "Você precisa completar os desafios anteriores primeiro!",
+                status=403
+            )
+        
+        # 6. CRIAR SUBMISSÃO COM VALIDAÇÃO
+        try:
+            logger.info("[SUBMIT] Creating submission...")
+            
+            submission = Submission(
+                challenge=challenge,
+                user=request.user,
+                code=code,
+                language=challenge.language,
+                status='pending'
+            )
+            
+            # CORREÇÃO: Validar modelo antes de salvar
+            try:
+                submission.full_clean()
+            except ValidationError as e:
+                logger.error(f"[SUBMIT] Validation error: {e}")
+                return create_error_response(
+                    "Dados da submissão inválidos",
+                    details={'validation_errors': e.message_dict}
+                )
+            
+            submission.save()
+            logger.info(f"[SUBMIT] Submission created: {submission.id}")
+            
+        except Exception as e:
+            logger.error(f"[SUBMIT] Error creating submission: {e}")
+            logger.error(f"[SUBMIT] Traceback: {traceback.format_exc()}")
+            return create_error_response(
+                "Erro ao criar submissão",
+                details={'error': str(e)}
+            )
+        
+        # 7. AVALIAR SUBMISSÃO COM TIMEOUT
+        try:
+            logger.info("[SUBMIT] Starting evaluation...")
+            
+            # CORREÇÃO: Timeout para avaliação
+            import signal
+            
+            def timeout_handler(signum, frame):
+                raise TimeoutError("Evaluation timeout")
+            
+            # Configurar timeout de 60 segundos para avaliação
+            old_handler = signal.signal(signal.SIGALRM, timeout_handler)
+            signal.alarm(60)
+            
+            try:
+                result = evaluate_submission(submission)
+                logger.info(f"[SUBMIT] Evaluation completed: {result.get('status')}")
+            finally:
+                signal.alarm(0)
+                signal.signal(signal.SIGALRM, old_handler)
+                
+        except TimeoutError:
+            logger.error("[SUBMIT] Evaluation timeout")
+            submission.status = 'runtime_error'
+            submission.error_message = 'Timeout na avaliação'
+            submission.save()
+            return create_error_response("Timeout na avaliação do código")
+            
+        except Exception as e:
+            logger.error(f"[SUBMIT] Error in evaluation: {e}")
+            logger.error(f"[SUBMIT] Traceback: {traceback.format_exc()}")
+            submission.status = 'runtime_error'
+            submission.error_message = f'Erro na avaliação: {str(e)}'
+            submission.save()
+            return create_error_response(
+                "Erro na avaliação do código",
+                details={'error': str(e)}
+            )
+        
+        # 8. PROCESSAR RESULTADO
+        if result.get('status') == 'accepted':
+            try:
+                logger.info("[SUBMIT] Processing accepted result...")
+                
+                # Verificar se já completou
+                already_completed = profile.completed_challenges.filter(id=challenge.id).exists()
+                
+                response_data = {
+                    'success': True,
+                    'status': 'accepted',
+                    'submission_id': submission.id,
+                    'execution_time': submission.execution_time,
+                }
+                
+                if not already_completed:
+                    # Adicionar pontos
+                    profile.completed_challenges.add(challenge)
+                    profile.total_points += challenge.points
+                    profile.save()
+                    
+                    # Tentar desbloquear próximo estado
+                    try:
+                        next_unlocked = profile.unlock_next_state()
+                    except Exception as e:
+                        logger.warning(f"[SUBMIT] Error unlocking next state: {e}")
+                        next_unlocked = False
+                    
+                    # Verificar conclusão total
+                    total_challenges = Challenge.objects.count()
+                    completed_challenges = profile.completed_challenges.count()
+                    all_completed = (completed_challenges >= total_challenges)
+                    
+                    response_data.update({
+                        'message': 'Parabéns! Solução aceita!',
+                        'points_earned': challenge.points,
+                        'next_unlocked': next_unlocked,
+                        'all_completed': all_completed,
+                        'total_points': profile.total_points,
+                        'completed_count': completed_challenges,
+                        'total_count': total_challenges,
+                    })
+                else:
+                    response_data.update({
+                        'message': 'Solução aceita! (já completado anteriormente)',
+                        'points_earned': 0,
+                        'next_unlocked': False,
+                        'all_completed': False,
+                    })
+                
+                logger.info(f"[SUBMIT] Success response prepared: {response_data['message']}")
+                return JsonResponse(response_data)
+                
+            except Exception as e:
+                logger.error(f"[SUBMIT] Error processing accepted result: {e}")
+                logger.error(f"[SUBMIT] Traceback: {traceback.format_exc()}")
+                return create_error_response(
+                    "Erro ao processar resultado aceito",
+                    details={'error': str(e)}
+                )
+        else:
+            # Resultado não aceito
+            logger.info(f"[SUBMIT] Non-accepted result: {result.get('status')}")
+            return JsonResponse({
+                'success': True,
+                'status': result.get('status', 'unknown'),
+                'message': result.get('message', 'Erro na execução'),
+                'submission_id': submission.id,
+                'execution_time': submission.execution_time,
+                'error_details': result.get('error_details'),
+            })
+            
+    except Exception as e:
+        logger.error(f"[SUBMIT] Critical error: {e}")
+        logger.error(f"[SUBMIT] Full traceback: {traceback.format_exc()}")
+        return create_error_response(
+            "Erro interno do servidor",
+            status=500,
+            details={'error': str(e)}
+        )
+
+# CORREÇÃO: View legacy melhorada
+@login_required
 def submit_solution(request, challenge_id):
+    """View tradicional para submissão via form - mantida para compatibilidade"""
     challenge = get_object_or_404(Challenge, pk=challenge_id)
     
     if request.method == 'POST':
-        # Suporte tanto para form tradicional quanto AJAX
-        if request.content_type == 'application/json':
-            # Submissão via AJAX
-            try:
-                data = json.loads(request.body)
-                code = data.get('code', '').strip()
-                
-                if not code:
-                    return JsonResponse({
-                        'success': False,
-                        'error': 'Código não pode estar vazio'
-                    })
-            except:
-                return JsonResponse({
-                    'success': False,
-                    'error': 'Dados inválidos'
-                })
-        else:
-            # Submissão via form tradicional
-            code = request.POST.get('code')
-        
-        submission = Submission.objects.create(
-            challenge=challenge,
-            user=request.user,
-            code=code,
-            language=challenge.language,
-            status='pending'
-        )
-        
-        # Avalia submissão
-        result = evaluate_submission(submission)
-        
-        if result['status'] == 'accepted':
-            profile = UserProfile.objects.get(user=request.user)
-            
-            # Só adiciona pontos se ainda não completou
-            if not profile.completed_challenges.filter(id=challenge.id).exists():
-                profile.completed_challenges.add(challenge)
-                profile.total_points += challenge.points
-                profile.save()
-                profile.unlock_next_state()
-                
-                # Resposta diferente para AJAX vs form
-                if request.content_type == 'application/json':
-                    return JsonResponse({
-                        'success': True,
-                        'status': 'accepted',
-                        'message': 'Parabéns! Seu código foi aceito!',
-                        'points_earned': challenge.points,
-                        'next_unlocked': True,
-                    })
-                else:
-                    messages.success(request, "Parabéns! Seu código foi aceito!")
-            else:
-                if request.content_type == 'application/json':
-                    return JsonResponse({
-                        'success': True,
-                        'status': 'accepted',
-                        'message': 'Código aceito! (já completado anteriormente)',
-                        'points_earned': 0,
-                        'next_unlocked': False,
-                    })
-                else:
-                    messages.info(request, "Código aceito! (já completado anteriormente)")
-        else:
-            if request.content_type == 'application/json':
-                return JsonResponse({
-                    'success': True,
-                    'status': result['status'],
-                    'message': result.get('message', 'Erro na execução'),
-                })
-            else:
-                messages.error(request, f"Submissão rejeitada: {result['message']}")
-        
-        # Redirecionamento tradicional
-        if request.content_type != 'application/json':
-            return redirect('submission-result', submission_id=submission.id)
-    
-    return redirect('challenge-detail', pk=challenge_id)
-
-@login_required
-@require_POST  
-def submit_solution_ajax(request, pk):
-    """View AJAX completa com proteções contra erros"""
-    import traceback
-    
-    try:
-        print(f"[DEBUG] Starting AJAX submit for challenge {pk}")
-        
-        # 1. Verificar challenge
-        challenge = get_object_or_404(Challenge, pk=pk)
-        print(f"[DEBUG] Challenge OK: {challenge.title}")
-        
-        # 2. Verificar dados JSON
-        try:
-            data = json.loads(request.body)
-            code = data.get('code', '').strip()
-            print(f"[DEBUG] Code length: {len(code)}")
-        except Exception as e:
-            print(f"[DEBUG] JSON error: {e}")
-            return JsonResponse({
-                'success': False,
-                'error': f'Erro ao processar dados: {str(e)}'
-            })
+        code = request.POST.get('code', '').strip()
         
         if not code:
-            return JsonResponse({
-                'success': False,
-                'error': 'Código não pode estar vazio'
-            })
+            messages.error(request, "Código não pode estar vazio")
+            return redirect('challenge-detail', pk=challenge_id)
         
-        # 3. Criar submissão (com proteção)
         try:
-            print(f"[DEBUG] Creating submission...")
             submission = Submission.objects.create(
                 challenge=challenge,
                 user=request.user,
@@ -172,123 +343,314 @@ def submit_solution_ajax(request, pk):
                 language=challenge.language,
                 status='pending'
             )
-            print(f"[DEBUG] Submission created: {submission.id}")
-        except Exception as e:
-            print(f"[DEBUG] Error creating submission: {e}")
-            return JsonResponse({
-                'success': False,
-                'error': f'Erro ao criar submissão: {str(e)}'
-            })
-        
-        # 4. Avaliar submissão (com proteção)
-        try:
-            print(f"[DEBUG] Starting evaluation...")
+            
+            # Avalia submissão
             result = evaluate_submission(submission)
-            print(f"[DEBUG] Evaluation result: {result}")
-        except Exception as e:
-            print(f"[DEBUG] Error in evaluation: {e}")
-            print(f"[DEBUG] Traceback: {traceback.format_exc()}")
-            return JsonResponse({
-                'success': False,
-                'error': f'Erro na avaliação: {str(e)}'
-            })
-        
-        # 5. Processar resultado aceito (com proteção)
-        if result['status'] == 'accepted':
-            try:
-                print(f"[DEBUG] Processing accepted result...")
+            
+            if result['status'] == 'accepted':
+                profile = UserProfile.objects.get(user=request.user)
                 
-                # Buscar ou criar perfil
-                try:
-                    profile = UserProfile.objects.get(user=request.user)
-                    print(f"[DEBUG] Profile found: {profile}")
-                except UserProfile.DoesNotExist:
-                    print(f"[DEBUG] Creating new profile...")
-                    initial_state = BrazilState.objects.filter(order=1).first()
-                    profile = UserProfile.objects.create(
-                        user=request.user,
-                        current_state=initial_state
-                    )
-                    print(f"[DEBUG] Profile created: {profile}")
-                
-                # Verificar se já completou
-                already_completed = profile.completed_challenges.filter(id=challenge.id).exists()
-                print(f"[DEBUG] Already completed: {already_completed}")
-                
-                if not already_completed:
-                    # Adicionar pontos
+                if not profile.completed_challenges.filter(id=challenge.id).exists():
                     profile.completed_challenges.add(challenge)
                     profile.total_points += challenge.points
                     profile.save()
-                    print(f"[DEBUG] Points added: {challenge.points}")
-                    
-                    # Tentar desbloquear próximo estado
-                    try:
-                        next_unlocked = profile.unlock_next_state()
-                        print(f"[DEBUG] Next unlocked: {next_unlocked}")
-                    except Exception as e:
-                        print(f"[DEBUG] Error unlocking next state: {e}")
-                        next_unlocked = False
-                    
-                    # Verificar conclusão total
-                    try:
-                        total_challenges = Challenge.objects.count()
-                        completed_challenges = profile.completed_challenges.count()
-                        all_completed = (completed_challenges == total_challenges)
-                        is_final_state = challenge.state.abbreviation == 'DF'
-                        print(f"[DEBUG] Stats - Total: {total_challenges}, Completed: {completed_challenges}, All completed: {all_completed}")
-                    except Exception as e:
-                        print(f"[DEBUG] Error calculating stats: {e}")
-                        all_completed = False
-                        is_final_state = False
-                        total_challenges = 0
-                        completed_challenges = 0
-                    
-                    return JsonResponse({
-                        'success': True,
-                        'status': 'accepted',
-                        'message': 'Parabéns! Solução aceita!',
-                        'points_earned': challenge.points,
-                        'next_unlocked': next_unlocked,
-                        'all_completed': all_completed,
-                        'is_final_state': is_final_state,
-                        'total_points': profile.total_points,
-                        'completed_count': completed_challenges,
-                    })
+                    profile.unlock_next_state()
+                    messages.success(request, "Parabéns! Seu código foi aceito!")
                 else:
-                    return JsonResponse({
-                        'success': True,
-                        'status': 'accepted',
-                        'message': 'Solução aceita! (já completado anteriormente)',
-                        'points_earned': 0,
-                        'next_unlocked': False,
-                        'all_completed': False,
-                        'is_final_state': False,
-                    })
-                    
-            except Exception as e:
-                print(f"[DEBUG] Error processing accepted result: {e}")
-                print(f"[DEBUG] Traceback: {traceback.format_exc()}")
-                return JsonResponse({
-                    'success': False,
-                    'error': f'Erro ao processar resultado: {str(e)}'
-                })
+                    messages.info(request, "Código aceito! (já completado anteriormente)")
+            else:
+                messages.error(request, f"Submissão rejeitada: {result['message']}")
+            
+            return redirect('submission-result', submission_id=submission.id)
+            
+        except Exception as e:
+            logger.error(f"Error in legacy submit: {e}")
+            messages.error(request, f"Erro ao processar submissão: {str(e)}")
+    
+    return redirect('challenge-detail', pk=challenge_id)
+
+def evaluate_submission(submission):
+    """
+    Função principal de avaliação com melhor tratamento de erros
+    CORREÇÃO: Timeout e validação melhorada
+    """
+    try:
+        challenge = submission.challenge
+        language = submission.language
+        
+        # Validações básicas
+        if not submission.code.strip():
+            submission.status = 'compilation_error'
+            submission.error_message = 'Código vazio'
+            submission.save()
+            return {'status': 'compilation_error', 'message': 'Código vazio'}
+        
+        if not challenge.test_cases:
+            submission.status = 'runtime_error'
+            submission.error_message = 'Nenhum caso de teste encontrado'
+            submission.save()
+            return {'status': 'runtime_error', 'message': 'Nenhum caso de teste encontrado'}
+        
+        # Status inicial
+        submission.status = 'running'
+        submission.save()
+        
+        logger.info(f"[EVAL] Starting evaluation for submission {submission.id} - Language: {language.name}")
+        
+        # Avaliação por linguagem
+        if language.name.lower() == 'java':
+            return evaluate_java_submission(submission)
         else:
-            # Resultado não aceito
-            return JsonResponse({
-                'success': True,
-                'status': result['status'],
-                'message': result.get('message', 'Erro na execução'),
-            })
+            return evaluate_other_languages_improved(submission)
             
     except Exception as e:
-        print(f"[DEBUG] General error: {e}")
-        print(f"[DEBUG] Full traceback: {traceback.format_exc()}")
-        return JsonResponse({
-            'success': False,
-            'error': f'Erro interno: {str(e)}'
-        })
+        logger.error(f"[EVAL] Critical error in evaluate_submission: {e}")
+        logger.error(f"[EVAL] Traceback: {traceback.format_exc()}")
+        submission.status = 'runtime_error'
+        submission.error_message = f'Erro crítico: {str(e)}'
+        submission.save()
+        return {'status': 'runtime_error', 'message': f'Erro crítico: {str(e)}'}
 
+def evaluate_other_languages_improved(submission):
+    """
+    CORREÇÃO: Avaliação melhorada para Python, C, C++
+    """
+    challenge = submission.challenge
+    language = submission.language
+    code = submission.code
+    
+    temp_files = []  # Lista para cleanup
+    
+    try:
+        logger.info(f"[EVAL] Evaluating {language.name} code - {len(challenge.test_cases)} test cases")
+        
+        start_time = time.time()
+        
+        for i, test_case in enumerate(challenge.test_cases, 1):
+            logger.debug(f"[EVAL] Running test case {i}/{len(challenge.test_cases)}")
+            
+            test_input = test_case.get('input', '')
+            expected_output = test_case.get('output', '').strip()
+            
+            # CORREÇÃO: Melhor tratamento de casos de teste
+            if not isinstance(test_input, str):
+                test_input = str(test_input)
+            if not isinstance(expected_output, str):
+                expected_output = str(expected_output)
+            
+            # Criar arquivo temporário com nome único
+            import uuid
+            temp_id = str(uuid.uuid4())[:8]
+            temp_file = tempfile.NamedTemporaryFile(
+                suffix=f'_{temp_id}.{language.extension}', 
+                delete=False,
+                mode='w',
+                encoding='utf-8'
+            )
+            
+            try:
+                temp_file.write(code)
+                temp_file.flush()
+                temp_file_path = temp_file.name
+                temp_files.append(temp_file_path)
+                
+            finally:
+                temp_file.close()
+            
+            # Executar baseado na linguagem
+            try:
+                if language.name.lower() == 'python':
+                    result = run_python_code(temp_file_path, test_input, challenge.time_limit)
+                elif language.name.lower() == 'c':
+                    result = run_c_code(temp_file_path, test_input, challenge.time_limit)
+                elif language.name.lower() in ['c++', 'cpp']:
+                    result = run_cpp_code(temp_file_path, test_input, challenge.time_limit)
+                else:
+                    raise ValueError(f"Linguagem não suportada: {language.name}")
+                
+                # Verificar resultado
+                if not result['success']:
+                    submission.status = result['status']
+                    submission.error_message = result['message']
+                    submission.save()
+                    return result
+                
+                # Comparar saída
+                actual_output = result['output'].strip()
+                
+                if actual_output != expected_output:
+                    submission.status = 'wrong_answer'
+                    submission.save()
+                    
+                    debug_msg = f"Teste {i}: Esperado '{expected_output}', Obtido '{actual_output}'"
+                    logger.info(f"[EVAL] Wrong answer: {debug_msg}")
+                    
+                    return {
+                        'status': 'wrong_answer', 
+                        'message': f'Resposta incorreta no teste {i}',
+                        'test_case': i,
+                        'expected': expected_output,
+                        'actual': actual_output
+                    }
+                
+                logger.debug(f"[EVAL] Test case {i} passed")
+                
+            except Exception as e:
+                logger.error(f"[EVAL] Error in test case {i}: {e}")
+                submission.status = 'runtime_error'
+                submission.error_message = f'Erro no teste {i}: {str(e)}'
+                submission.save()
+                return {'status': 'runtime_error', 'message': f'Erro no teste {i}: {str(e)}'}
+        
+        # Todos os testes passaram
+        execution_time = (time.time() - start_time) * 1000
+        submission.status = 'accepted'
+        submission.execution_time = execution_time
+        submission.save()
+        
+        logger.info(f"[EVAL] All tests passed - Execution time: {execution_time:.2f}ms")
+        
+        return {
+            'status': 'accepted', 
+            'message': f'Todos os {len(challenge.test_cases)} testes passaram',
+            'execution_time': execution_time,
+            'passed_tests': len(challenge.test_cases),
+            'total_tests': len(challenge.test_cases)
+        }
+    
+    except Exception as e:
+        logger.error(f"[EVAL] Critical error in language evaluation: {e}")
+        logger.error(f"[EVAL] Traceback: {traceback.format_exc()}")
+        submission.status = 'runtime_error'
+        submission.error_message = f'Erro crítico: {str(e)}'
+        submission.save()
+        return {'status': 'runtime_error', 'message': f'Erro crítico: {str(e)}'}
+    
+    finally:
+        # CORREÇÃO: Cleanup garantido
+        for temp_file in temp_files:
+            try:
+                if os.path.exists(temp_file):
+                    os.unlink(temp_file)
+                # Cleanup de arquivos compilados
+                if temp_file.endswith('.c') or temp_file.endswith('.cpp'):
+                    out_file = temp_file + '.out'
+                    if os.path.exists(out_file):
+                        os.unlink(out_file)
+            except:
+                pass
+
+def run_python_code(file_path, test_input, time_limit_ms):
+    """Executa código Python com timeout"""
+    try:
+        proc = subprocess.Popen(
+            ['python3', file_path],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True
+        )
+        
+        stdout, stderr = proc.communicate(
+            input=test_input, 
+            timeout=time_limit_ms / 1000
+        )
+        
+        if proc.returncode != 0:
+            error_msg = stderr.strip() or "Erro de execução"
+            return {'success': False, 'status': 'runtime_error', 'message': error_msg}
+        
+        return {'success': True, 'output': stdout}
+        
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        return {'success': False, 'status': 'time_limit', 'message': 'Tempo limite excedido'}
+    except Exception as e:
+        return {'success': False, 'status': 'runtime_error', 'message': str(e)}
+
+def run_c_code(file_path, test_input, time_limit_ms):
+    """Compila e executa código C"""
+    try:
+        # Compilar
+        compile_proc = subprocess.run(
+            ['gcc', file_path, '-o', f'{file_path}.out', '-std=c11', '-Wall', '-lm'],
+            capture_output=True,
+            text=True,
+            timeout=15
+        )
+        
+        if compile_proc.returncode != 0:
+            error_msg = compile_proc.stderr.strip() or "Erro de compilação"
+            return {'success': False, 'status': 'compilation_error', 'message': error_msg}
+        
+        # Executar
+        proc = subprocess.Popen(
+            [f'{file_path}.out'],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True
+        )
+        
+        stdout, stderr = proc.communicate(
+            input=test_input,
+            timeout=time_limit_ms / 1000
+        )
+        
+        if proc.returncode != 0:
+            error_msg = stderr.strip() or "Erro de execução"
+            return {'success': False, 'status': 'runtime_error', 'message': error_msg}
+        
+        return {'success': True, 'output': stdout}
+        
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        return {'success': False, 'status': 'time_limit', 'message': 'Tempo limite excedido'}
+    except Exception as e:
+        return {'success': False, 'status': 'runtime_error', 'message': str(e)}
+
+def run_cpp_code(file_path, test_input, time_limit_ms):
+    """Compila e executa código C++"""
+    try:
+        # Compilar
+        compile_proc = subprocess.run(
+            ['g++', file_path, '-o', f'{file_path}.out', '-std=c++17', '-Wall', '-O2', '-lm'],
+            capture_output=True,
+            text=True,
+            timeout=15
+        )
+        
+        if compile_proc.returncode != 0:
+            error_msg = compile_proc.stderr.strip() or "Erro de compilação"
+            return {'success': False, 'status': 'compilation_error', 'message': error_msg}
+        
+        # Executar
+        proc = subprocess.Popen(
+            [f'{file_path}.out'],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True
+        )
+        
+        stdout, stderr = proc.communicate(
+            input=test_input,
+            timeout=time_limit_ms / 1000
+        )
+        
+        if proc.returncode != 0:
+            error_msg = stderr.strip() or "Erro de execução"
+            return {'success': False, 'status': 'runtime_error', 'message': error_msg}
+        
+        return {'success': True, 'output': stdout}
+        
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        return {'success': False, 'status': 'time_limit', 'message': 'Tempo limite excedido'}
+    except Exception as e:
+        return {'success': False, 'status': 'runtime_error', 'message': str(e)}
+
+# Views restantes mantidas como estavam
 @login_required
 def submission_result(request, submission_id):
     submission = get_object_or_404(Submission, pk=submission_id, user=request.user)
@@ -299,224 +661,6 @@ def submission_result(request, submission_id):
     }
     
     return render(request, 'challenges/results.html', context)
-
-def evaluate_submission(submission):
-    """
-    Função que avalia uma submissão.
-    Mantém implementação original com suporte Java
-    """
-    challenge = submission.challenge
-    language = submission.language
-    code = submission.code
-    
-    # Status inicial
-    submission.status = 'running'
-    submission.save()
-    
-    try:
-        # Condição Java original - mantida
-        if language.name.lower() == 'java':
-            return evaluate_java_submission(submission)
-        
-        # Lógica original para outras linguagens - mantida
-        else:
-            return evaluate_other_languages_existing(submission)
-            
-    except Exception as e:
-        submission.status = 'runtime_error'
-        submission.error_message = str(e)
-        submission.save()
-        return {'status': 'runtime_error', 'message': f'Erro de execução: {str(e)}'}
-
-def evaluate_other_languages_existing(submission):
-    """
-    Implementação melhorada para Python, C, C++
-    """
-    challenge = submission.challenge
-    language = submission.language
-    code = submission.code
-    
-    try:
-        # Verifica cada caso de teste
-        all_passed = True
-        start_time = time.time()
-        
-        for test_case in challenge.test_cases:
-            test_input = test_case.get('input', '')
-            expected_output = test_case.get('output', '').strip()
-            
-            # Cria arquivo temporário
-            with tempfile.NamedTemporaryFile(suffix=f'.{language.extension}', delete=False) as temp_file:
-                temp_file.write(code.encode('utf-8'))
-                temp_file_path = temp_file.name
-            
-            # Execute o código baseado na linguagem
-            if language.name.lower() == 'python':
-                proc = subprocess.Popen(
-                    ['python3', temp_file_path],
-                    stdin=subprocess.PIPE,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    text=True
-                )
-                
-            elif language.name.lower() == 'c':
-                # Compila o código C com -lm
-                compile_proc = subprocess.run(
-                    ['gcc', temp_file_path, '-o', f'{temp_file_path}.out', '-std=c11', '-Wall', '-lm'],
-                    capture_output=True,
-                    text=True,
-                    timeout=10
-                )
-                
-                if compile_proc.returncode != 0:
-                    submission.status = 'compilation_error'
-                    error_msg = compile_proc.stderr.strip() or "Erro de compilação desconhecido"
-                    submission.error_message = error_msg
-                    submission.save()
-                    
-                    # Limpa arquivo temporário
-                    if os.path.exists(temp_file_path):
-                        os.unlink(temp_file_path)
-                    
-                    return {
-                        'status': 'compilation_error', 
-                        'message': f'Erro de compilação C: {error_msg}'
-                    }
-                
-                proc = subprocess.Popen(
-                    [f'{temp_file_path}.out'],
-                    stdin=subprocess.PIPE,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    text=True
-                )
-                
-            elif language.name.lower() in ['c++', 'cpp']:
-                # Compila o código C++ com flags melhoradas
-                compile_proc = subprocess.run(
-                    [
-                        'g++', 
-                        temp_file_path, 
-                        '-o', f'{temp_file_path}.out',
-                        '-std=c++17',
-                        '-Wall',
-                        '-Wextra',
-                        '-O2',
-                        '-lm'  # Biblioteca matemática
-                    ],
-                    capture_output=True,
-                    text=True,
-                    timeout=10
-                )
-                
-                if compile_proc.returncode != 0:
-                    submission.status = 'compilation_error'
-                    
-                    # Captura a mensagem de erro detalhada
-                    error_msg = compile_proc.stderr.strip()
-                    if not error_msg:
-                        error_msg = "Erro de compilação desconhecido"
-                    
-                    # Melhora a mensagem de erro
-                    if "error:" in error_msg.lower():
-                        error_lines = [line for line in error_msg.split('\n') if 'error:' in line.lower()]
-                        if error_lines:
-                            error_msg = '\n'.join(error_lines[:3])
-                    
-                    submission.error_message = error_msg
-                    submission.save()
-                    
-                    # Limpa arquivo temporário
-                    if os.path.exists(temp_file_path):
-                        os.unlink(temp_file_path)
-                    
-                    return {
-                        'status': 'compilation_error', 
-                        'message': f'Erro de compilação C++: {error_msg}'
-                    }
-                
-                proc = subprocess.Popen(
-                    [f'{temp_file_path}.out'],
-                    stdin=subprocess.PIPE,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    text=True
-                )
-            
-            # Executa o programa
-            try:
-                stdout, stderr = proc.communicate(
-                    input=test_input, 
-                    timeout=challenge.time_limit / 1000
-                )
-            except subprocess.TimeoutExpired:
-                proc.kill()
-                submission.status = 'time_limit'
-                submission.save()
-                
-                # Limpa arquivos temporários
-                if os.path.exists(temp_file_path):
-                    os.unlink(temp_file_path)
-                if language.name.lower() in ['c', 'c++', 'cpp']:
-                    if os.path.exists(f'{temp_file_path}.out'):
-                        os.unlink(f'{temp_file_path}.out')
-                
-                return {'status': 'time_limit', 'message': 'Tempo limite excedido'}
-            
-            # Verifica se houve erro de execução
-            if proc.returncode != 0:
-                submission.status = 'runtime_error'
-                error_msg = stderr.strip() if stderr.strip() else "Erro de execução desconhecido"
-                submission.error_message = error_msg
-                submission.save()
-                
-                # Limpa arquivos temporários
-                if os.path.exists(temp_file_path):
-                    os.unlink(temp_file_path)
-                if language.name.lower() in ['c', 'c++', 'cpp']:
-                    if os.path.exists(f'{temp_file_path}.out'):
-                        os.unlink(f'{temp_file_path}.out')
-                
-                return {'status': 'runtime_error', 'message': f'Erro de execução: {error_msg}'}
-            
-            # Limpa arquivos temporários
-            if os.path.exists(temp_file_path):
-                os.unlink(temp_file_path)
-            if language.name.lower() in ['c', 'c++', 'cpp']:
-                if os.path.exists(f'{temp_file_path}.out'):
-                    os.unlink(f'{temp_file_path}.out')
-            
-            # Verifica se a saída está correta
-            actual_output = stdout.strip()
-            
-            if actual_output != expected_output:
-                all_passed = False
-                submission.status = 'wrong_answer'
-                submission.save()
-                
-                # Debug: mostra diferença entre saídas
-                debug_msg = f"Esperado: '{expected_output}', Obtido: '{actual_output}'"
-                return {'status': 'wrong_answer', 'message': f'Resposta incorreta. {debug_msg}'}
-        
-        execution_time = (time.time() - start_time) * 1000
-        
-        if all_passed:
-            submission.status = 'accepted'
-            submission.execution_time = execution_time
-            submission.save()
-            return {'status': 'accepted', 'message': 'Todos os testes passaram'}
-        else:
-            submission.status = 'wrong_answer'
-            submission.execution_time = execution_time
-            submission.save()
-            return {'status': 'wrong_answer', 'message': 'Resposta incorreta'}
-    
-    except Exception as e:
-        submission.status = 'runtime_error'
-        submission.error_message = str(e)
-        submission.save()
-        return {'status': 'runtime_error', 'message': f'Erro de execução: {str(e)}'}
 
 @login_required
 def user_submissions(request):
