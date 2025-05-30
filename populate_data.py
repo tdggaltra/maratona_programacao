@@ -197,10 +197,10 @@ def populate_challenges():
             'example_input': '6',
             'example_output': '8',
             'test_cases': [
-                {'input': '1', 'output': '1'},
-                {'input': '2', 'output': '1'},
-                {'input': '6', 'output': '8'},
-                {'input': '10', 'output': '55'}
+                {"input": "1", "output": "1"},
+                {"input": "2", "output": "1"},
+                {"input": "6", "output": "8"},
+                {"input": "10", "output": "55"}
             ],
             'time_limit': 1000
         },
