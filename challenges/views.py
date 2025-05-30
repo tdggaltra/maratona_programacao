@@ -17,6 +17,9 @@ import os
 import time
 import logging
 import traceback
+from django.views.decorators.csrf import csrf_exempt
+from django.core.exceptions import ValidationError
+import traceback
 
 # Configurar logging
 logger = logging.getLogger(__name__)
@@ -747,3 +750,231 @@ def congratulations(request):
     except UserProfile.DoesNotExist:
         messages.error(request, "Perfil não encontrado!")
         return redirect('home')
+    
+@csrf_exempt
+def debug_submit(request):
+    """
+    View de debug para identificar exatamente o que está causando o 400
+    ADICIONE ESTA VIEW NO FINAL DO SEU ARQUIVO views.py
+    """
+    response_data = {
+        'method': request.method,
+        'content_type': request.content_type,
+        'user_authenticated': request.user.is_authenticated,
+        'user': str(request.user) if request.user.is_authenticated else None,
+        'headers': {},
+        'body_info': {},
+        'debug_info': {}
+    }
+    
+    # Capturar headers importantes
+    for header in ['Content-Type', 'Content-Length', 'X-CSRFToken']:
+        value = request.META.get(f'HTTP_{header.upper().replace("-", "_")}')
+        if value:
+            response_data['headers'][header] = value
+    
+    # Analisar body
+    try:
+        body_raw = request.body
+        response_data['body_info'] = {
+            'length': len(body_raw),
+            'encoding': 'utf-8' if body_raw else 'empty',
+            'preview': body_raw.decode('utf-8')[:200] if body_raw else 'empty'
+        }
+        
+        # Tentar parse JSON
+        if body_raw:
+            try:
+                data = json.loads(body_raw)
+                response_data['json_valid'] = True
+                response_data['json_keys'] = list(data.keys()) if isinstance(data, dict) else 'not_dict'
+                response_data['json_types'] = {k: type(v).__name__ for k, v in data.items()} if isinstance(data, dict) else {}
+                
+                # Verificar campo code especificamente
+                if 'code' in data:
+                    code = data['code']
+                    response_data['code_info'] = {
+                        'type': type(code).__name__,
+                        'length': len(code) if isinstance(code, str) else 'not_string',
+                        'empty_after_strip': not code.strip() if isinstance(code, str) else 'not_string',
+                        'preview': code[:100] if isinstance(code, str) else str(code)[:100]
+                    }
+                
+            except json.JSONDecodeError as e:
+                response_data['json_valid'] = False
+                response_data['json_error'] = str(e)
+        else:
+            response_data['json_valid'] = False
+            response_data['json_error'] = 'empty_body'
+            
+    except Exception as e:
+        response_data['body_error'] = str(e)
+    
+    return JsonResponse(response_data)
+
+@login_required
+@csrf_exempt
+@require_POST  
+def submit_solution_ajax_debug(request, pk):
+    """
+    SUBSTITUA TEMPORARIAMENTE SUA FUNÇÃO submit_solution_ajax POR ESTA
+    """
+    logger = logging.getLogger(__name__)
+    
+    # Log inicial
+    logger.info(f"[SUBMIT] Request received - Method: {request.method}, Content-Type: {request.content_type}")
+    logger.info(f"[SUBMIT] User: {request.user}, Authenticated: {request.user.is_authenticated}")
+    logger.info(f"[SUBMIT] Challenge PK: {pk}")
+    
+    # 1. VERIFICAR MÉTODO E CONTENT-TYPE
+    if request.method != 'POST':
+        logger.error(f"[SUBMIT] Invalid method: {request.method}")
+        return JsonResponse({
+            'success': False,
+            'error': 'Método deve ser POST',
+            'debug': {'method': request.method}
+        }, status=400)
+    
+    if request.content_type != 'application/json':
+        logger.error(f"[SUBMIT] Invalid content-type: {request.content_type}")
+        return JsonResponse({
+            'success': False,
+            'error': 'Content-Type deve ser application/json',
+            'debug': {'content_type': request.content_type}
+        }, status=400)
+    
+    # 2. VERIFICAR AUTENTICAÇÃO
+    if not request.user.is_authenticated:
+        logger.error("[SUBMIT] User not authenticated")
+        return JsonResponse({
+            'success': False,
+            'error': 'Usuário deve estar logado'
+        }, status=401)
+    
+    # 3. VERIFICAR CHALLENGE
+    try:
+        challenge = Challenge.objects.get(pk=pk)
+        logger.info(f"[SUBMIT] Challenge found: {challenge.title}")
+    except Challenge.DoesNotExist:
+        logger.error(f"[SUBMIT] Challenge {pk} not found")
+        return JsonResponse({
+            'success': False,
+            'error': f'Desafio {pk} não encontrado'
+        }, status=404)
+    except Exception as e:
+        logger.error(f"[SUBMIT] Error getting challenge: {e}")
+        return JsonResponse({
+            'success': False,
+            'error': 'Erro ao buscar desafio',
+            'debug': {'error': str(e)}
+        }, status=500)
+    
+    # 4. VERIFICAR BODY
+    try:
+        body_raw = request.body
+        logger.info(f"[SUBMIT] Body length: {len(body_raw)}")
+        
+        if not body_raw:
+            logger.error("[SUBMIT] Empty body")
+            return JsonResponse({
+                'success': False,
+                'error': 'Request body vazio'
+            }, status=400)
+        
+        # Log do body (primeiros 200 chars)
+        body_preview = body_raw.decode('utf-8')[:200]
+        logger.info(f"[SUBMIT] Body preview: {body_preview}")
+        
+    except Exception as e:
+        logger.error(f"[SUBMIT] Error reading body: {e}")
+        return JsonResponse({
+            'success': False,
+            'error': 'Erro ao ler request body',
+            'debug': {'error': str(e)}
+        }, status=400)
+    
+    # 5. VERIFICAR JSON
+    try:
+        data = json.loads(body_raw)
+        logger.info(f"[SUBMIT] JSON parsed successfully - Keys: {list(data.keys())}")
+        
+        if not isinstance(data, dict):
+            logger.error(f"[SUBMIT] Data is not dict: {type(data)}")
+            return JsonResponse({
+                'success': False,
+                'error': 'Dados devem ser um objeto JSON',
+                'debug': {'data_type': type(data).__name__}
+            }, status=400)
+            
+    except json.JSONDecodeError as e:
+        logger.error(f"[SUBMIT] JSON decode error: {e}")
+        return JsonResponse({
+            'success': False,
+            'error': 'JSON inválido',
+            'debug': {'json_error': str(e), 'body_preview': body_preview}
+        }, status=400)
+    except Exception as e:
+        logger.error(f"[SUBMIT] Error parsing JSON: {e}")
+        return JsonResponse({
+            'success': False,
+            'error': 'Erro ao processar JSON',
+            'debug': {'error': str(e)}
+        }, status=400)
+    
+    # 6. VERIFICAR CAMPO CODE
+    try:
+        if 'code' not in data:
+            logger.error("[SUBMIT] Missing 'code' field")
+            return JsonResponse({
+                'success': False,
+                'error': "Campo 'code' é obrigatório",
+                'debug': {'available_keys': list(data.keys())}
+            }, status=400)
+        
+        code = data['code']
+        logger.info(f"[SUBMIT] Code field found - Type: {type(code).__name__}")
+        
+        if not isinstance(code, str):
+            logger.error(f"[SUBMIT] Code is not string: {type(code)}")
+            return JsonResponse({
+                'success': False,
+                'error': "Campo 'code' deve ser uma string",
+                'debug': {'code_type': type(code).__name__}
+            }, status=400)
+        
+        code = code.strip()
+        logger.info(f"[SUBMIT] Code length after strip: {len(code)}")
+        
+        if not code:
+            logger.error("[SUBMIT] Empty code after strip")
+            return JsonResponse({
+                'success': False,
+                'error': 'Código não pode estar vazio'
+            }, status=400)
+        
+        if len(code) > 50000:
+            logger.error(f"[SUBMIT] Code too long: {len(code)}")
+            return JsonResponse({
+                'success': False,
+                'error': 'Código muito longo (máximo 50KB)',
+                'debug': {'code_length': len(code)}
+            }, status=400)
+            
+    except Exception as e:
+        logger.error(f"[SUBMIT] Error validating code: {e}")
+        return JsonResponse({
+            'success': False,
+            'error': 'Erro ao validar código',
+            'debug': {'error': str(e)}
+        }, status=400)
+    
+    # RETORNAR SUCESSO SEM AVALIAR (para teste)
+    return JsonResponse({
+        'success': True,
+        'message': 'Submissão validada com sucesso (modo debug)',
+        'debug': {
+            'challenge': challenge.title,
+            'code_length': len(code),
+            'language': challenge.language.name
+        }
+    })

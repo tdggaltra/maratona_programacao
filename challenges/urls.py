@@ -21,4 +21,9 @@ urlpatterns = [
     
     # NOVA URL para tela de parabéns
     path('congratulations/', views.congratulations, name='congratulations'),
+
+    path('debug/submit/', views.debug_submit, name='debug-submit'),
+
+    path('challenge/<int:pk>/submit-debug/', views.submit_solution_ajax_debug, name='submit-solution-ajax-debug'),
+
 ]
