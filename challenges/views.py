@@ -131,60 +131,159 @@ def submit_solution(request, challenge_id):
     
     return redirect('challenge-detail', pk=challenge_id)
 
-# SUBSTITUA temporariamente a função submit_solution_ajax por esta versão de debug:
-
 @login_required
 @require_POST  
 def submit_solution_ajax(request, pk):
-    """View AJAX simplificada para debug"""
+    """View AJAX completa com proteções contra erros"""
     import traceback
-    import sys
     
     try:
-        # Log básico
-        print(f"[DEBUG] AJAX called for challenge {pk}")
-        print(f"[DEBUG] User: {request.user}")
-        print(f"[DEBUG] Method: {request.method}")
+        print(f"[DEBUG] Starting AJAX submit for challenge {pk}")
         
-        # Verificar se o desafio existe
+        # 1. Verificar challenge
         challenge = get_object_or_404(Challenge, pk=pk)
-        print(f"[DEBUG] Challenge found: {challenge.title}")
+        print(f"[DEBUG] Challenge OK: {challenge.title}")
         
-        # Verificar dados JSON
+        # 2. Verificar dados JSON
         try:
             data = json.loads(request.body)
             code = data.get('code', '').strip()
-            print(f"[DEBUG] Code received, length: {len(code)}")
+            print(f"[DEBUG] Code length: {len(code)}")
         except Exception as e:
             print(f"[DEBUG] JSON error: {e}")
             return JsonResponse({
                 'success': False,
-                'error': f'Erro JSON: {str(e)}'
+                'error': f'Erro ao processar dados: {str(e)}'
             })
         
         if not code:
             return JsonResponse({
                 'success': False,
-                'error': 'Código vazio'
+                'error': 'Código não pode estar vazio'
             })
         
-        # Resposta de sucesso simples (sem criar submissão ainda)
-        return JsonResponse({
-            'success': True,
-            'status': 'debug',
-            'message': f'Debug OK - Challenge: {challenge.title}, Code length: {len(code)}',
-            'points_earned': 0,
-            'next_unlocked': False,
-            'all_completed': False,
-            'is_final_state': False,
-        })
+        # 3. Criar submissão (com proteção)
+        try:
+            print(f"[DEBUG] Creating submission...")
+            submission = Submission.objects.create(
+                challenge=challenge,
+                user=request.user,
+                code=code,
+                language=challenge.language,
+                status='pending'
+            )
+            print(f"[DEBUG] Submission created: {submission.id}")
+        except Exception as e:
+            print(f"[DEBUG] Error creating submission: {e}")
+            return JsonResponse({
+                'success': False,
+                'error': f'Erro ao criar submissão: {str(e)}'
+            })
         
+        # 4. Avaliar submissão (com proteção)
+        try:
+            print(f"[DEBUG] Starting evaluation...")
+            result = evaluate_submission(submission)
+            print(f"[DEBUG] Evaluation result: {result}")
+        except Exception as e:
+            print(f"[DEBUG] Error in evaluation: {e}")
+            print(f"[DEBUG] Traceback: {traceback.format_exc()}")
+            return JsonResponse({
+                'success': False,
+                'error': f'Erro na avaliação: {str(e)}'
+            })
+        
+        # 5. Processar resultado aceito (com proteção)
+        if result['status'] == 'accepted':
+            try:
+                print(f"[DEBUG] Processing accepted result...")
+                
+                # Buscar ou criar perfil
+                try:
+                    profile = UserProfile.objects.get(user=request.user)
+                    print(f"[DEBUG] Profile found: {profile}")
+                except UserProfile.DoesNotExist:
+                    print(f"[DEBUG] Creating new profile...")
+                    initial_state = BrazilState.objects.filter(order=1).first()
+                    profile = UserProfile.objects.create(
+                        user=request.user,
+                        current_state=initial_state
+                    )
+                    print(f"[DEBUG] Profile created: {profile}")
+                
+                # Verificar se já completou
+                already_completed = profile.completed_challenges.filter(id=challenge.id).exists()
+                print(f"[DEBUG] Already completed: {already_completed}")
+                
+                if not already_completed:
+                    # Adicionar pontos
+                    profile.completed_challenges.add(challenge)
+                    profile.total_points += challenge.points
+                    profile.save()
+                    print(f"[DEBUG] Points added: {challenge.points}")
+                    
+                    # Tentar desbloquear próximo estado
+                    try:
+                        next_unlocked = profile.unlock_next_state()
+                        print(f"[DEBUG] Next unlocked: {next_unlocked}")
+                    except Exception as e:
+                        print(f"[DEBUG] Error unlocking next state: {e}")
+                        next_unlocked = False
+                    
+                    # Verificar conclusão total
+                    try:
+                        total_challenges = Challenge.objects.count()
+                        completed_challenges = profile.completed_challenges.count()
+                        all_completed = (completed_challenges == total_challenges)
+                        is_final_state = challenge.state.abbreviation == 'DF'
+                        print(f"[DEBUG] Stats - Total: {total_challenges}, Completed: {completed_challenges}, All completed: {all_completed}")
+                    except Exception as e:
+                        print(f"[DEBUG] Error calculating stats: {e}")
+                        all_completed = False
+                        is_final_state = False
+                        total_challenges = 0
+                        completed_challenges = 0
+                    
+                    return JsonResponse({
+                        'success': True,
+                        'status': 'accepted',
+                        'message': 'Parabéns! Solução aceita!',
+                        'points_earned': challenge.points,
+                        'next_unlocked': next_unlocked,
+                        'all_completed': all_completed,
+                        'is_final_state': is_final_state,
+                        'total_points': profile.total_points,
+                        'completed_count': completed_challenges,
+                    })
+                else:
+                    return JsonResponse({
+                        'success': True,
+                        'status': 'accepted',
+                        'message': 'Solução aceita! (já completado anteriormente)',
+                        'points_earned': 0,
+                        'next_unlocked': False,
+                        'all_completed': False,
+                        'is_final_state': False,
+                    })
+                    
+            except Exception as e:
+                print(f"[DEBUG] Error processing accepted result: {e}")
+                print(f"[DEBUG] Traceback: {traceback.format_exc()}")
+                return JsonResponse({
+                    'success': False,
+                    'error': f'Erro ao processar resultado: {str(e)}'
+                })
+        else:
+            # Resultado não aceito
+            return JsonResponse({
+                'success': True,
+                'status': result['status'],
+                'message': result.get('message', 'Erro na execução'),
+            })
+            
     except Exception as e:
-        # Log detalhado do erro
-        error_info = traceback.format_exc()
-        print(f"[DEBUG] Exception: {e}")
-        print(f"[DEBUG] Traceback: {error_info}")
-        
+        print(f"[DEBUG] General error: {e}")
+        print(f"[DEBUG] Full traceback: {traceback.format_exc()}")
         return JsonResponse({
             'success': False,
             'error': f'Erro interno: {str(e)}'
