@@ -30,5 +30,6 @@ urlpatterns = [
 
     path('debug/environment/', views.debug_environment, name='debug-environment'),
     path('test/challenge/253/', views.test_challenge_253, name='test-challenge-253'),
+    path('test-congratulations/', views.test_congratulations, name='test-congratulations'),  # TEMPORÁRIO
 
 ]

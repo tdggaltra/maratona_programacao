@@ -180,6 +180,14 @@ public class Main {
                 </div>
                 {% endif %}
                 
+                <!-- BOTÃO DE TESTE TEMPORÁRIO -->
+                <div class="alert alert-warning mt-3">
+                    <h6>🔧 Debug - Teste de Redirecionamento:</h6>
+                    <button type="button" class="btn btn-sm btn-warning" onclick="window.location.href='{% url 'congratulations' %}'">
+                        Testar Redirecionamento para Congratulações
+                    </button>
+                </div>
+                
                 <!-- NOVO: Formulário com suporte AJAX -->
                 <form id="submission-form">
                     {% csrf_token %}
@@ -469,14 +477,34 @@ int main() {
                     return response.json();
                 })
                 .then(data => {
-                    console.log('Response data:', data);
+                    // LOGS DE DEBUG DETALHADOS
+                    console.log('=== DEBUG REDIRECIONAMENTO ===');
+                    console.log('Response data completa:', data);
+                    console.log('data.success:', data.success);
+                    console.log('data.status:', data.status);
+                    console.log('data.all_completed:', data.all_completed);
+                    console.log('data.is_final_state:', data.is_final_state);
+                    console.log('Tipo de data.all_completed:', typeof data.all_completed);
+                    console.log('Tipo de data.is_final_state:', typeof data.is_final_state);
+                    console.log('================================');
                     
                     const resultArea = document.getElementById('result-area');
                     
                     if (data.success) {
+                        console.log('✅ data.success é true');
+                        
                         if (data.status === 'accepted') {
+                            console.log('✅ data.status é accepted');
+                            
+                            // VERIFICAÇÃO DETALHADA DAS CONDIÇÕES
+                            console.log('Verificando condições para redirecionamento...');
+                            console.log('data.all_completed:', data.all_completed, '(deveria ser true)');
+                            console.log('data.is_final_state:', data.is_final_state, '(deveria ser true)');
+                            
                             // Verificar se completou todos os desafios
-                            if (data.all_completed && data.is_final_state) {
+                            if (data.all_completed) {
+                                console.log('🎉 TODAS AS CONDIÇÕES ATENDIDAS - EXECUTANDO REDIRECIONAMENTO');
+                                
                                 // Efeito especial para conclusão completa
                                 createConfetti();
                                 
@@ -490,23 +518,78 @@ int main() {
                                             <p class="mb-2">Você completou TODOS os ${data.completed_count || 27} desafios da Maratona Brasil!</p>
                                             <p class="mb-2"><strong>Total de pontos:</strong> ${data.total_points || 0}</p>
                                             <hr>
-                                            <p class="mb-0">🚀 Redirecionando para sua tela de parabéns...</p>
+                                            <p class="mb-0">🚀 Redirecionando para sua tela de parabéns em <span id="countdown">4</span> segundos...</p>
                                         </div>
                                     </div>
                                 `;
                                 
-                                // Redireciona para a tela de parabéns após 4 segundos
+                                // CONTADOR VISUAL PARA DEBUG
+                                let countdown = 4;
+                                const countdownElement = document.getElementById('countdown');
+                                const countdownInterval = setInterval(() => {
+                                    countdown--;
+                                    if (countdownElement) {
+                                        countdownElement.textContent = countdown;
+                                    }
+                                    console.log(`Redirecionamento em ${countdown} segundos...`);
+                                    
+                                    if (countdown <= 0) {
+                                        clearInterval(countdownInterval);
+                                    }
+                                }, 1000);
+                                
+                                // REDIRECIONAMENTO COM LOGS
                                 setTimeout(() => {
-                                    window.location.href = '{% url "congratulations" %}';
+                                    console.log('⏰ EXECUTANDO REDIRECIONAMENTO AGORA...');
+                                    console.log('URL de destino: {% url "congratulations" %}');
+                                    
+                                    try {
+                                        window.location.href = '{% url "congratulations" %}';
+                                        console.log('✅ window.location.href executado');
+                                    } catch (error) {
+                                        console.error('❌ ERRO no redirecionamento:', error);
+                                        
+                                        // FALLBACK: Tentar outras formas de redirecionamento
+                                        console.log('Tentando método alternativo...');
+                                        try {
+                                            window.location.assign('{% url "congratulations" %}');
+                                        } catch (error2) {
+                                            console.error('❌ ERRO no assign:', error2);
+                                            
+                                            // ÚLTIMO RECURSO: Reload com query parameter
+                                            console.log('Último recurso: recarregando página...');
+                                            window.location.reload();
+                                        }
+                                    }
                                 }, 4000);
                                 
                             } else {
+                                // LOGS PARA CONDIÇÕES NÃO ATENDIDAS
+                                console.log('❌ CONDIÇÕES NÃO ATENDIDAS:');
+                                if (!data.all_completed) {
+                                    console.log('   - data.all_completed é:', data.all_completed, '(precisa ser true)');
+                                }
+                                if (!data.is_final_state) {
+                                    console.log('   - data.is_final_state é:', data.is_final_state, '(precisa ser true)');
+                                }
+                                
                                 // Submissão aceita normal
                                 resultArea.innerHTML = `
                                     <div class="result-area result-success">
                                         <h5><i class="fas fa-check-circle me-2"></i>${data.message}</h5>
                                         ${data.points_earned > 0 ? `<p><strong>Pontos ganhos:</strong> ${data.points_earned}</p>` : ''}
                                         ${data.next_unlocked ? '<p class="mb-0"><i class="fas fa-star me-1"></i><strong>Próximo estado desbloqueado!</strong></p>' : ''}
+                                        
+                                        <!-- DEBUG INFO -->
+                                        <div class="alert alert-info mt-3">
+                                            <h6>🔍 Debug Info:</h6>
+                                            <small>
+                                                all_completed: ${data.all_completed}<br>
+                                                is_final_state: ${data.is_final_state}<br>
+                                                completed_count: ${data.completed_count}<br>
+                                                total_points: ${data.total_points}
+                                            </small>
+                                        </div>
                                     </div>
                                 `;
                                 
@@ -518,6 +601,8 @@ int main() {
                                 }
                             }
                         } else {
+                            console.log('❌ data.status NÃO é accepted. Valor atual:', data.status);
+                            
                             // Submissão rejeitada
                             let resultClass = 'result-error';
                             if (data.status === 'compilation_error') resultClass = 'result-warning';
@@ -531,6 +616,8 @@ int main() {
                             `;
                         }
                     } else {
+                        console.log('❌ data.success é false. Erro:', data.error);
+                        
                         resultArea.innerHTML = `
                             <div class="result-area result-error">
                                 <h5><i class="fas fa-times-circle me-2"></i>Erro</h5>

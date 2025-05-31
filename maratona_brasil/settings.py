@@ -18,8 +18,20 @@ ALLOWED_HOSTS = [
     'maratona-programacao-1.onrender.com',  # Nova URL Docker
     'localhost', 
     '127.0.0.1',
+    '.ngrok.io',
+    '.ngrok-free.app',
     '*'  # Permitir qualquer host (para desenvolvimento)
 ]
+
+CSRF_TRUSTED_ORIGINS = [
+    'https://*.ngrok.io',
+    'https://*.ngrok-free.app',
+]
+
+# WhiteNoise com configurações para proxy
+WHITENOISE_USE_FINDERS = True
+WHITENOISE_AUTOREFRESH = True
+WHITENOISE_SKIP_COMPRESS_EXTENSIONS = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'zip', 'gz', 'tgz', 'bz2', 'tbz', 'xz', 'br', 'svg']
 
 # Aplicativos instalados
 INSTALLED_APPS = [
@@ -39,8 +51,13 @@ INSTALLED_APPS = [
     'accounts.apps.AccountsConfig',
 ]
 
+# 1. MIDDLEWARE (certificar que WhiteNoise está na posição correta):
+# settings.py - MODIFICAR MIDDLEWARE:
+
 MIDDLEWARE = [
+    'core.middleware.NgrokStaticMiddleware',  # ADICIONAR no topo
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -48,6 +65,21 @@ MIDDLEWARE = [
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
+
+# 2. CONFIGURAÇÕES ESTÁTICAS (simplificar):
+STATIC_URL = '/static/'
+STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
+
+STATICFILES_DIRS = [
+    BASE_DIR / "static",
+]
+
+# 3. CONFIGURAÇÕES DO WHITENOISE:
+WHITENOISE_USE_FINDERS = True
+WHITENOISE_AUTOREFRESH = True
+
+# 4. REMOVER estas linhas se existirem:
+# STATICFILES_STORAGE = 'whitenoise.storage.CompressedStaticFilesStorage'
 
 # Adicionar whitenoise apenas se instalado
 try:
@@ -115,7 +147,8 @@ STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 
 # Diretórios de arquivos estáticos
 STATICFILES_DIRS = [
-    BASE_DIR / "static",
+    BASE_DIR / "static",           # Pasta static raiz (se existir)
+    BASE_DIR / "core" / "static",  # Arquivos do app core
 ]
 
 # Para melhor performance na produção (comentado até instalar whitenoise)
@@ -353,3 +386,31 @@ LOGGING = {
         },
     },
 }
+
+# settings.py
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+USE_TZ = True
+
+# Middleware personalizado para ngrok
+MIDDLEWARE = [
+    'django.middleware.security.SecurityMiddleware',
+    'django.contrib.sessions.middleware.SessionMiddleware',
+    'django.middleware.common.CommonMiddleware',
+    'django.middleware.csrf.CsrfViewMiddleware',
+    'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'django.contrib.messages.middleware.MessageMiddleware',
+    'django.middleware.clickjacking.XFrameOptionsMiddleware',
+]
+
+# Adicionar headers para ngrok
+def add_ngrok_header(get_response):
+    def middleware(request):
+        response = get_response(request)
+        response['ngrok-skip-browser-warning'] = 'any'
+        return response
+    return middleware
+
+# Se usando ngrok, adicionar o middleware
+import os
+if 'ngrok' in os.environ.get('HTTP_HOST', ''):
+    MIDDLEWARE.append('path.to.your.add_ngrok_header')

@@ -67,7 +67,7 @@ def challenge_detail(request, pk):
 @require_POST  
 def submit_solution_ajax(request, pk):
     """
-    View AJAX corrigida SEM uso de signal (que causa problemas em threads)
+    View AJAX corrigida com verificação SEMPRE
     """
     import traceback
     
@@ -114,11 +114,9 @@ def submit_solution_ajax(request, pk):
                 'error': f'Erro ao criar submissão: {str(e)}'
             })
         
-        # 4. Avaliar submissão SEM TIMEOUT DE SIGNAL
+        # 4. Avaliar submissão
         try:
             logger.info(f"[SUBMIT] Starting evaluation...")
-            
-            # CORREÇÃO: Usar evaluate_submission sem timeout de signal
             result = evaluate_submission_safe(submission)
             logger.info(f"[SUBMIT] Evaluation completed: {result.get('status')}")
             
@@ -147,26 +145,39 @@ def submit_solution_ajax(request, pk):
                 
                 # Verificar se já completou
                 already_completed = profile.completed_challenges.filter(id=challenge.id).exists()
+                logger.info(f"[SUBMIT] Already completed: {already_completed}")
+                
+                # SEMPRE VERIFICAR CONCLUSÃO TOTAL (independente se já completou)
+                total_challenges = Challenge.objects.count()
+                completed_challenges = profile.completed_challenges.count()
+                all_completed = (completed_challenges >= total_challenges)
+                
+                # LOGS DE DEBUG DETALHADOS
+                logger.info(f"[DEBUG] ======== COMPLETION CHECK ========")
+                logger.info(f"[DEBUG] Challenge completed: {challenge.title}")
+                logger.info(f"[DEBUG] Challenge state: {challenge.state.name} ({challenge.state.abbreviation})")
+                logger.info(f"[DEBUG] Total challenges in DB: {total_challenges}")
+                logger.info(f"[DEBUG] User completed challenges: {completed_challenges}")
+                logger.info(f"[DEBUG] All completed calculation: {completed_challenges} >= {total_challenges} = {all_completed}")
+                logger.info(f"[DEBUG] Already completed this challenge: {already_completed}")
+                logger.info(f"[DEBUG] ===================================")
                 
                 if not already_completed:
-                    # Adicionar pontos
+                    # Primeira vez completando - adicionar pontos
                     profile.completed_challenges.add(challenge)
                     profile.total_points += challenge.points
                     profile.save()
+                    logger.info(f"[SUBMIT] Points added: {challenge.points}")
                     
                     # Tentar desbloquear próximo estado
                     try:
                         next_unlocked = profile.unlock_next_state()
+                        logger.info(f"[SUBMIT] Next state unlocked: {next_unlocked}")
                     except Exception as e:
                         logger.warning(f"[SUBMIT] Error unlocking next state: {e}")
                         next_unlocked = False
                     
-                    # Verificar conclusão total
-                    total_challenges = Challenge.objects.count()
-                    completed_challenges = profile.completed_challenges.count()
-                    all_completed = (completed_challenges >= total_challenges)
-                    
-                    return JsonResponse({
+                    response_data = {
                         'success': True,
                         'status': 'accepted',
                         'message': 'Parabéns! Solução aceita!',
@@ -175,25 +186,47 @@ def submit_solution_ajax(request, pk):
                         'all_completed': all_completed,
                         'total_points': profile.total_points,
                         'completed_count': completed_challenges,
-                    })
+                        'total_count': total_challenges,
+                        'challenge_state': challenge.state.abbreviation,
+                    }
                 else:
-                    return JsonResponse({
+                    # Já foi completado - não dar pontos, mas ainda verificar conclusão
+                    response_data = {
                         'success': True,
                         'status': 'accepted',
                         'message': 'Solução aceita! (já completado anteriormente)',
                         'points_earned': 0,
                         'next_unlocked': False,
-                        'all_completed': False,
+                        'already_completed': True,
+                        'all_completed': all_completed,  # IMPORTANTE: incluir sempre
+                        'total_points': profile.total_points,
+                        'completed_count': completed_challenges,
+                        'total_count': total_challenges,
+                    }
+                
+                # VERIFICAR SE DEVE REDIRECIONAR PARA PARABÉNS (SEMPRE)
+                if all_completed:
+                    logger.info(f"[DEBUG] ✅ ALL CHALLENGES COMPLETED! Adding redirect to congratulations!")
+                    response_data.update({
+                        'redirect_to': '/challenges/congratulations/',
+                        'message': '🎉 PARABÉNS! Você completou todos os desafios do Brasil! 🇧🇷',
+                        'show_congratulations': True,
+                        'completion_type': 'full_completion'
                     })
+                
+                logger.info(f"[DEBUG] Final response data: {response_data}")
+                return JsonResponse(response_data)
                     
             except Exception as e:
                 logger.error(f"[SUBMIT] Error processing accepted result: {e}")
+                logger.error(f"[SUBMIT] Traceback: {traceback.format_exc()}")
                 return JsonResponse({
                     'success': False,
                     'error': f'Erro ao processar resultado: {str(e)}'
                 })
         else:
             # Resultado não aceito
+            logger.info(f"[SUBMIT] Solution not accepted: {result['status']}")
             return JsonResponse({
                 'success': True,
                 'status': result['status'],
@@ -207,7 +240,7 @@ def submit_solution_ajax(request, pk):
         return JsonResponse({
             'success': False,
             'error': f'Erro interno: {str(e)}'
-        })
+        })   
 
 
 # ===== NOVA FUNÇÃO evaluate_submission_safe =====
@@ -874,33 +907,145 @@ def user_submissions(request):
     
     return render(request, 'challenges/user_submissions.html', context)
 
-@login_required
+# Adicione esta função no seu challenges/views.py
+
+# VERSÃO SIMPLIFICADA PARA DEBUG
+# Substitua temporariamente a view leaderboard por esta versão
+
 def leaderboard(request):
-    """Exibe ranking dos usuários"""
+    """
+    View simplificada para debug do leaderboard
+    """
     try:
-        profiles = UserProfile.objects.select_related('user').order_by('-total_points')[:50]
+        # Import básico para testar
+        from django.contrib.auth.models import User
+        from django.db.models import Sum, Count
+        from .models import Challenge, Submission
         
-        # Encontra posição do usuário atual
-        user_position = None
-        user_profile = request.user.userprofile
-        for i, profile in enumerate(profiles, 1):
-            if profile.user == request.user:
-                user_position = i
-                break
+        # Teste básico 1: Verificar se consegue acessar os modelos
+        print("DEBUG: Tentando acessar modelos...")
+        
+        total_users = User.objects.count()
+        total_challenges = Challenge.objects.count()
+        total_submissions = Submission.objects.count()
+        
+        print(f"DEBUG: {total_users} usuários, {total_challenges} desafios, {total_submissions} submissões")
+        
+        # Teste básico 2: Buscar usuários com submissões aceitas
+        print("DEBUG: Buscando usuários com submissões aceitas...")
+        
+        users_with_accepted = User.objects.filter(
+            submission__status='accepted'
+        ).distinct()
+        
+        print(f"DEBUG: {users_with_accepted.count()} usuários com submissões aceitas")
+        
+        # Criar lista simples para teste
+        users_data = []
+        
+        for user in users_with_accepted[:10]:  # Limitar a 10 para debug
+            try:
+                # Buscar dados básicos do usuário
+                user_submissions = Submission.objects.filter(
+                    user=user,
+                    status='accepted'
+                )
                 
+                total_points = 0
+                completed_challenges = 0
+                
+                # Calcular pontos de forma mais segura
+                for submission in user_submissions:
+                    if submission.challenge and submission.challenge.points:
+                        total_points += submission.challenge.points
+                
+                # Contar desafios únicos completados
+                completed_challenges = user_submissions.values('challenge').distinct().count()
+                
+                # Calcular porcentagem
+                completion_percentage = round((completed_challenges / total_challenges) * 100) if total_challenges > 0 else 0
+                
+                users_data.append({
+                    'user': user,
+                    'total_points': total_points,
+                    'completed_challenges': completed_challenges,
+                    'completion_percentage': completion_percentage,
+                })
+                
+                print(f"DEBUG: Usuário {user.username}: {total_points} pontos, {completed_challenges} desafios")
+                
+            except Exception as e:
+                print(f"DEBUG: Erro ao processar usuário {user.username}: {str(e)}")
+                continue
+        
+        # Ordenar por pontos
+        users_data.sort(key=lambda x: (x['total_points'], x['completed_challenges']), reverse=True)
+        
+        print(f"DEBUG: Processados {len(users_data)} usuários com sucesso")
+        
+        # Estatísticas do usuário atual
+        user_stats = None
+        if request.user.is_authenticated:
+            print(f"DEBUG: Usuário logado: {request.user.username}")
+            
+            for index, user_data in enumerate(users_data):
+                if user_data['user'] == request.user:
+                    user_stats = user_data.copy()
+                    user_stats['position'] = index + 1
+                    break
+            
+            if not user_stats:
+                user_stats = {
+                    'position': None,
+                    'total_points': 0,
+                    'completed_challenges': 0,
+                    'completion_percentage': 0,
+                }
+        
+        # Estatísticas gerais simplificadas
+        completed_users = len([u for u in users_data if u['completed_challenges'] == total_challenges])
+        
         context = {
-            'profiles': profiles,
-            'user_position': user_position,
-            'user_profile': user_profile,
+            'users': users_data,
+            'user_stats': user_stats,
+            'total_users': total_users,
+            'completed_users': completed_users,
+            'total_submissions': total_submissions,
+            'total_points': sum(u['total_points'] for u in users_data),
         }
-    except:
+        
+        print("DEBUG: Context preparado com sucesso")
+        print(f"DEBUG: Context keys: {list(context.keys())}")
+        
+        return render(request, 'challenges/leaderboard.html', context)
+        
+    except Exception as e:
+        # Se houver qualquer erro, mostrar no log e retornar template mínimo
+        print(f"DEBUG: ERRO na view leaderboard: {str(e)}")
+        print(f"DEBUG: Tipo do erro: {type(e).__name__}")
+        
+        import traceback
+        print(f"DEBUG: Traceback completo:")
+        print(traceback.format_exc())
+        
+        # Context mínimo para não quebrar o template
         context = {
-            'profiles': [],
-            'user_position': None,
-            'user_profile': None,
+            'users': [],
+            'user_stats': None,
+            'total_users': 0,
+            'completed_users': 0,
+            'total_submissions': 0,
+            'total_points': 0,
+            'error_message': str(e),
         }
-    
-    return render(request, 'challenges/leaderboard.html', context)
+        
+        return render(request, 'challenges/leaderboard.html', context)
+
+@login_required
+def test_congratulations(request):
+    """View temporária para testar a página de parabéns"""
+    # Forçar redirecionamento para congratulations
+    return redirect('congratulations')
 
 @login_required
 def congratulations(request):
@@ -1447,3 +1592,4 @@ def test_challenge_253(request):
             'error': str(e),
             'traceback': traceback.format_exc()
         })
+    
