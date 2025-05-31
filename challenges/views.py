@@ -912,89 +912,83 @@ def user_submissions(request):
 # VERSÃO SIMPLIFICADA PARA DEBUG
 # Substitua temporariamente a view leaderboard por esta versão
 
+# VIEW LEADERBOARD CORRIGIDA
+# Substitua a função leaderboard por esta versão
+
 def leaderboard(request):
     """
-    View simplificada para debug do leaderboard
+    View corrigida para o ranking dos usuários
     """
     try:
-        # Import básico para testar
         from django.contrib.auth.models import User
-        from django.db.models import Sum, Count
+        from django.db.models import Sum, Count, Q
         from .models import Challenge, Submission
         
-        # Teste básico 1: Verificar se consegue acessar os modelos
-        print("DEBUG: Tentando acessar modelos...")
+        print("DEBUG: Iniciando leaderboard corrigida...")
         
-        total_users = User.objects.count()
-        total_challenges = Challenge.objects.count()
-        total_submissions = Submission.objects.count()
-        
-        print(f"DEBUG: {total_users} usuários, {total_challenges} desafios, {total_submissions} submissões")
-        
-        # Teste básico 2: Buscar usuários com submissões aceitas
-        print("DEBUG: Buscando usuários com submissões aceitas...")
-        
-        users_with_accepted = User.objects.filter(
-            submission__status='accepted'
+        # CORREÇÃO: Usar 'submissions' em vez de 'submission'
+        users_with_submissions = User.objects.filter(
+            submissions__status='accepted'  # CORRIGIDO: submissions (plural)
         ).distinct()
         
-        print(f"DEBUG: {users_with_accepted.count()} usuários com submissões aceitas")
+        print(f"DEBUG: Encontrados {users_with_submissions.count()} usuários com submissões aceitas")
         
-        # Criar lista simples para teste
+        total_challenges = Challenge.objects.count()
         users_data = []
         
-        for user in users_with_accepted[:10]:  # Limitar a 10 para debug
-            try:
-                # Buscar dados básicos do usuário
-                user_submissions = Submission.objects.filter(
-                    user=user,
-                    status='accepted'
-                )
-                
-                total_points = 0
-                completed_challenges = 0
-                
-                # Calcular pontos de forma mais segura
-                for submission in user_submissions:
-                    if submission.challenge and submission.challenge.points:
-                        total_points += submission.challenge.points
-                
-                # Contar desafios únicos completados
-                completed_challenges = user_submissions.values('challenge').distinct().count()
-                
-                # Calcular porcentagem
-                completion_percentage = round((completed_challenges / total_challenges) * 100) if total_challenges > 0 else 0
-                
-                users_data.append({
-                    'user': user,
-                    'total_points': total_points,
-                    'completed_challenges': completed_challenges,
-                    'completion_percentage': completion_percentage,
-                })
-                
-                print(f"DEBUG: Usuário {user.username}: {total_points} pontos, {completed_challenges} desafios")
-                
-            except Exception as e:
-                print(f"DEBUG: Erro ao processar usuário {user.username}: {str(e)}")
-                continue
+        for user in users_with_submissions:
+            print(f"DEBUG: Processando usuário {user.username}...")
+            
+            # CORREÇÃO: Usar o related_name correto
+            accepted_submissions = Submission.objects.filter(
+                user=user,
+                status='accepted'
+            )
+            
+            print(f"DEBUG: Usuário {user.username} tem {accepted_submissions.count()} submissões aceitas")
+            
+            # Calcular pontos totais (evitando duplicatas por desafio)
+            unique_challenges = {}
+            for submission in accepted_submissions:
+                challenge_id = submission.challenge.id
+                if challenge_id not in unique_challenges:
+                    unique_challenges[challenge_id] = submission.challenge.points or 0
+            
+            total_points = sum(unique_challenges.values())
+            completed_challenges = len(unique_challenges)
+            
+            # Calcular porcentagem de conclusão
+            completion_percentage = round((completed_challenges / total_challenges) * 100) if total_challenges > 0 else 0
+            
+            print(f"DEBUG: Usuário {user.username}: {total_points} pontos, {completed_challenges} desafios, {completion_percentage}%")
+            
+            users_data.append({
+                'user': user,
+                'total_points': total_points,
+                'completed_challenges': completed_challenges,
+                'completion_percentage': completion_percentage,
+            })
         
-        # Ordenar por pontos
+        # Ordenar por pontos totais (decrescente) e depois por desafios completados
         users_data.sort(key=lambda x: (x['total_points'], x['completed_challenges']), reverse=True)
         
-        print(f"DEBUG: Processados {len(users_data)} usuários com sucesso")
+        print(f"DEBUG: Processados {len(users_data)} usuários no ranking")
         
         # Estatísticas do usuário atual
         user_stats = None
         if request.user.is_authenticated:
-            print(f"DEBUG: Usuário logado: {request.user.username}")
+            print(f"DEBUG: Buscando posição do usuário {request.user.username}...")
             
             for index, user_data in enumerate(users_data):
                 if user_data['user'] == request.user:
                     user_stats = user_data.copy()
                     user_stats['position'] = index + 1
+                    print(f"DEBUG: Usuário {request.user.username} está na posição {user_stats['position']}")
                     break
             
+            # Se o usuário logado não está na lista
             if not user_stats:
+                print(f"DEBUG: Usuário {request.user.username} não encontrado no ranking")
                 user_stats = {
                     'position': None,
                     'total_points': 0,
@@ -1002,8 +996,13 @@ def leaderboard(request):
                     'completion_percentage': 0,
                 }
         
-        # Estatísticas gerais simplificadas
+        # Estatísticas gerais
+        total_users = users_with_submissions.count()
         completed_users = len([u for u in users_data if u['completed_challenges'] == total_challenges])
+        total_submissions = Submission.objects.count()
+        total_points_distributed = sum(u['total_points'] for u in users_data)
+        
+        print(f"DEBUG: Estatísticas finais - {total_users} usuários, {completed_users} finalistas, {total_submissions} submissões")
         
         context = {
             'users': users_data,
@@ -1011,16 +1010,15 @@ def leaderboard(request):
             'total_users': total_users,
             'completed_users': completed_users,
             'total_submissions': total_submissions,
-            'total_points': sum(u['total_points'] for u in users_data),
+            'total_points': total_points_distributed,
         }
         
-        print("DEBUG: Context preparado com sucesso")
-        print(f"DEBUG: Context keys: {list(context.keys())}")
+        print("DEBUG: Context criado com sucesso, renderizando template...")
         
         return render(request, 'challenges/leaderboard.html', context)
         
     except Exception as e:
-        # Se houver qualquer erro, mostrar no log e retornar template mínimo
+        # Log detalhado do erro
         print(f"DEBUG: ERRO na view leaderboard: {str(e)}")
         print(f"DEBUG: Tipo do erro: {type(e).__name__}")
         
@@ -1028,7 +1026,7 @@ def leaderboard(request):
         print(f"DEBUG: Traceback completo:")
         print(traceback.format_exc())
         
-        # Context mínimo para não quebrar o template
+        # Context de fallback
         context = {
             'users': [],
             'user_stats': None,
@@ -1036,7 +1034,7 @@ def leaderboard(request):
             'completed_users': 0,
             'total_submissions': 0,
             'total_points': 0,
-            'error_message': str(e),
+            'error_message': f"Erro interno: {str(e)}",
         }
         
         return render(request, 'challenges/leaderboard.html', context)
