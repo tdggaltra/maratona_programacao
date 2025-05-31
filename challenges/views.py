@@ -915,20 +915,26 @@ def user_submissions(request):
 # VIEW LEADERBOARD CORRIGIDA
 # Substitua a função leaderboard por esta versão
 
+# VIEW LEADERBOARD COMPLETA COM CRITÉRIOS DE DESEMPATE
+# Substitua a função leaderboard no seu challenges/views.py
+
+from django.shortcuts import render
+from django.contrib.auth.models import User
+from django.db.models import Sum, Count, Q, Min, Max
+from django.utils import timezone
+from datetime import datetime
+from .models import Challenge, Submission
+
 def leaderboard(request):
     """
-    View corrigida para o ranking dos usuários
+    View completa para ranking com critérios de desempate
     """
     try:
-        from django.contrib.auth.models import User
-        from django.db.models import Sum, Count, Q
-        from .models import Challenge, Submission
+        print("DEBUG: Iniciando leaderboard com critérios de desempate...")
         
-        print("DEBUG: Iniciando leaderboard corrigida...")
-        
-        # CORREÇÃO: Usar 'submissions' em vez de 'submission'
+        # Buscar usuários com submissões aceitas
         users_with_submissions = User.objects.filter(
-            submissions__status='accepted'  # CORRIGIDO: submissions (plural)
+            submissions__status='accepted'
         ).distinct()
         
         print(f"DEBUG: Encontrados {users_with_submissions.count()} usuários com submissões aceitas")
@@ -939,13 +945,11 @@ def leaderboard(request):
         for user in users_with_submissions:
             print(f"DEBUG: Processando usuário {user.username}...")
             
-            # CORREÇÃO: Usar o related_name correto
+            # Submissões aceitas do usuário
             accepted_submissions = Submission.objects.filter(
                 user=user,
                 status='accepted'
             )
-            
-            print(f"DEBUG: Usuário {user.username} tem {accepted_submissions.count()} submissões aceitas")
             
             # Calcular pontos totais (evitando duplicatas por desafio)
             unique_challenges = {}
@@ -956,23 +960,66 @@ def leaderboard(request):
             
             total_points = sum(unique_challenges.values())
             completed_challenges = len(unique_challenges)
-            
-            # Calcular porcentagem de conclusão
             completion_percentage = round((completed_challenges / total_challenges) * 100) if total_challenges > 0 else 0
             
-            print(f"DEBUG: Usuário {user.username}: {total_points} pontos, {completed_challenges} desafios, {completion_percentage}%")
+            # ==== NOVOS CAMPOS PARA CRITÉRIOS DE DESEMPATE ====
+            
+            # 1. Data de conclusão (última submissão aceita)
+            last_accepted = accepted_submissions.order_by('-submitted_at').first()
+            completion_date = last_accepted.submitted_at if last_accepted else timezone.now()
+            
+            # 2. Total de tentativas (todas as submissões do usuário)
+            total_attempts = Submission.objects.filter(user=user).count()
+            
+            # 3. Data da primeira submissão (quando começou)
+            first_submission = Submission.objects.filter(user=user).order_by('submitted_at').first()
+            first_attempt_date = first_submission.submitted_at if first_submission else timezone.now()
+            
+            # 4. Taxa de sucesso (aceitos / total)
+            success_rate = round((accepted_submissions.count() / total_attempts) * 100) if total_attempts > 0 else 0
+            
+            # 5. Tempo para completar (diferença entre primeira e última submissão aceita)
+            if first_submission and last_accepted and completed_challenges == total_challenges:
+                completion_time_days = (last_accepted.submitted_at - first_submission.submitted_at).days
+            else:
+                completion_time_days = 999999  # Valor alto para quem não completou
+            
+            print(f"DEBUG: {user.username}: {total_points}pts, {completed_challenges}desafios, {total_attempts}tentativas, {success_rate}%sucesso")
             
             users_data.append({
                 'user': user,
                 'total_points': total_points,
                 'completed_challenges': completed_challenges,
                 'completion_percentage': completion_percentage,
+                # Campos para desempate
+                'completion_date': completion_date,
+                'total_attempts': total_attempts,
+                'first_attempt_date': first_attempt_date,
+                'success_rate': success_rate,
+                'completion_time_days': completion_time_days,
+                # Campos extras para exibição
+                'accepted_count': accepted_submissions.count(),
             })
         
-        # Ordenar por pontos totais (decrescente) e depois por desafios completados
-        users_data.sort(key=lambda x: (x['total_points'], x['completed_challenges']), reverse=True)
+        # ==== ORDENAÇÃO COM CRITÉRIOS DE DESEMPATE ====
+        print("DEBUG: Aplicando critérios de desempate...")
         
-        print(f"DEBUG: Processados {len(users_data)} usuários no ranking")
+        users_data.sort(key=lambda x: (
+            -x['total_points'],                    # 1º: Mais pontos (decrescente)
+            -x['completed_challenges'],            # 2º: Mais desafios completados (decrescente)
+            x['completion_time_days'],             # 3º: Completou mais rápido (crescente)
+            x['total_attempts'],                   # 4º: Menos tentativas totais (crescente)
+            -x['success_rate'],                    # 5º: Maior taxa de sucesso (decrescente)
+            x['first_attempt_date'],               # 6º: Começou primeiro (crescente)
+            x['user'].username.lower(),            # 7º: Ordem alfabética (crescente)
+        ))
+        
+        # Log dos primeiros 5 para debug
+        print("DEBUG: Top 5 após ordenação:")
+        for i, user_data in enumerate(users_data[:5]):
+            print(f"  {i+1}º: {user_data['user'].username} - {user_data['total_points']}pts, "
+                  f"{user_data['completed_challenges']}desafios, {user_data['total_attempts']}tentativas, "
+                  f"{user_data['completion_time_days']}dias")
         
         # Estatísticas do usuário atual
         user_stats = None
@@ -983,17 +1030,18 @@ def leaderboard(request):
                 if user_data['user'] == request.user:
                     user_stats = user_data.copy()
                     user_stats['position'] = index + 1
-                    print(f"DEBUG: Usuário {request.user.username} está na posição {user_stats['position']}")
+                    print(f"DEBUG: {request.user.username} está na {user_stats['position']}ª posição")
                     break
             
-            # Se o usuário logado não está na lista
             if not user_stats:
-                print(f"DEBUG: Usuário {request.user.username} não encontrado no ranking")
+                print(f"DEBUG: {request.user.username} não encontrado no ranking")
                 user_stats = {
                     'position': None,
                     'total_points': 0,
                     'completed_challenges': 0,
                     'completion_percentage': 0,
+                    'total_attempts': 0,
+                    'success_rate': 0,
                 }
         
         # Estatísticas gerais
@@ -1002,7 +1050,12 @@ def leaderboard(request):
         total_submissions = Submission.objects.count()
         total_points_distributed = sum(u['total_points'] for u in users_data)
         
-        print(f"DEBUG: Estatísticas finais - {total_users} usuários, {completed_users} finalistas, {total_submissions} submissões")
+        # Estatísticas adicionais
+        avg_completion_rate = round(sum(u['completion_percentage'] for u in users_data) / len(users_data)) if users_data else 0
+        avg_attempts_per_user = round(total_submissions / total_users) if total_users > 0 else 0
+        
+        print(f"DEBUG: Estatísticas - {total_users} usuários, {completed_users} finalistas, "
+              f"{total_submissions} submissões, {avg_completion_rate}% média")
         
         context = {
             'users': users_data,
@@ -1011,22 +1064,18 @@ def leaderboard(request):
             'completed_users': completed_users,
             'total_submissions': total_submissions,
             'total_points': total_points_distributed,
+            'avg_completion_rate': avg_completion_rate,
+            'avg_attempts_per_user': avg_attempts_per_user,
         }
         
-        print("DEBUG: Context criado com sucesso, renderizando template...")
-        
+        print("DEBUG: Context criado com sucesso!")
         return render(request, 'challenges/leaderboard.html', context)
         
     except Exception as e:
-        # Log detalhado do erro
         print(f"DEBUG: ERRO na view leaderboard: {str(e)}")
-        print(f"DEBUG: Tipo do erro: {type(e).__name__}")
-        
         import traceback
-        print(f"DEBUG: Traceback completo:")
         print(traceback.format_exc())
         
-        # Context de fallback
         context = {
             'users': [],
             'user_stats': None,
@@ -1034,7 +1083,9 @@ def leaderboard(request):
             'completed_users': 0,
             'total_submissions': 0,
             'total_points': 0,
-            'error_message': f"Erro interno: {str(e)}",
+            'avg_completion_rate': 0,
+            'avg_attempts_per_user': 0,
+            'error_message': f"Erro: {str(e)}",
         }
         
         return render(request, 'challenges/leaderboard.html', context)

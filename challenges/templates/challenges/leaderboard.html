@@ -1,4 +1,4 @@
-<!-- challenges/templates/challenges/leaderboard.html -->
+<!-- challenges/templates/challenges/leaderboard.html - VERSÃO COMPLETA -->
 {% extends 'base.html' %}
 {% load static %}
 
@@ -6,75 +6,77 @@
 
 {% block extra_css %}
 <style>
-    .leaderboard-card {
+    .leaderboard-header {
         background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
         color: white;
         border-radius: 15px;
         padding: 2rem;
         margin-bottom: 2rem;
-        box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+        text-align: center;
     }
     
-    .rank-position {
-        font-size: 2rem;
-        font-weight: bold;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        width: 60px;
-        height: 60px;
-        border-radius: 50%;
-        color: white;
-        margin-right: 1rem;
-    }
-    
-    .rank-1 { background: linear-gradient(45deg, #FFD700, #FFA500); }
-    .rank-2 { background: linear-gradient(45deg, #C0C0C0, #A9A9A9); }
-    .rank-3 { background: linear-gradient(45deg, #CD7F32, #B8860B); }
-    .rank-other { background: linear-gradient(45deg, #6c757d, #495057); }
-    
-    .user-row {
+    .rank-card {
         background: white;
         border-radius: 10px;
         padding: 1rem;
         margin-bottom: 0.5rem;
-        box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
         transition: transform 0.2s ease;
+        border-left: 4px solid #dee2e6;
     }
     
-    .user-row:hover {
+    .rank-card:hover {
         transform: translateY(-2px);
-        box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+        box-shadow: 0 4px 20px rgba(0,0,0,0.15);
     }
     
-    .current-user {
+    .rank-card.current-user {
         background: linear-gradient(45deg, #e3f2fd, #bbdefb);
-        border: 2px solid #2196f3;
+        border-left-color: #2196f3;
+        box-shadow: 0 4px 20px rgba(33, 150, 243, 0.3);
     }
     
-    .trophy-icon {
+    .rank-card.rank-1 { border-left-color: #FFD700; }
+    .rank-card.rank-2 { border-left-color: #C0C0C0; }
+    .rank-card.rank-3 { border-left-color: #CD7F32; }
+    
+    .rank-position {
         font-size: 1.5rem;
-        margin-right: 0.5rem;
+        font-weight: bold;
+        width: 50px;
+        height: 50px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: white;
+        margin-right: 1rem;
     }
+    
+    .rank-1 .rank-position { background: linear-gradient(45deg, #FFD700, #FFA500); }
+    .rank-2 .rank-position { background: linear-gradient(45deg, #C0C0C0, #A9A9A9); }
+    .rank-3 .rank-position { background: linear-gradient(45deg, #CD7F32, #B8860B); }
+    .rank-other .rank-position { background: linear-gradient(45deg, #6c757d, #495057); }
     
     .stats-card {
-        background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%);
-        border-radius: 15px;
+        background: white;
+        border-radius: 10px;
         padding: 1.5rem;
         text-align: center;
-        box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        margin-bottom: 1rem;
     }
     
     .stats-number {
-        font-size: 2.5rem;
+        font-size: 2rem;
         font-weight: bold;
         color: #333;
+        margin-bottom: 0.5rem;
     }
     
     .stats-label {
         color: #666;
         font-size: 0.9rem;
-        margin-top: 0.5rem;
     }
     
     .completion-badge {
@@ -86,136 +88,161 @@
         font-weight: bold;
     }
     
-    .filter-tabs {
-        background: white;
-        border-radius: 10px;
-        padding: 0.5rem;
-        margin-bottom: 2rem;
-        box-shadow: 0 2px 10px rgba(0,0,0,0.05);
-    }
-    
-    .filter-tab {
-        border: none;
-        background: transparent;
-        padding: 0.8rem 1.5rem;
-        border-radius: 8px;
-        transition: all 0.3s ease;
+    .detail-stats {
+        font-size: 0.75rem;
         color: #666;
-        font-weight: 500;
+        margin-top: 0.5rem;
     }
     
-    .filter-tab.active {
-        background: linear-gradient(45deg, #667eea, #764ba2);
-        color: white;
-        box-shadow: 0 3px 10px rgba(102, 126, 234, 0.3);
+    .detail-stats .stat-item {
+        display: inline-block;
+        margin-right: 1rem;
+        padding: 0.2rem 0.5rem;
+        background: #f8f9fa;
+        border-radius: 4px;
+    }
+    
+    .criteria-info {
+        background: #fff3cd;
+        border: 1px solid #ffeaa7;
+        border-radius: 8px;
+        padding: 1rem;
+        margin-bottom: 1rem;
     }
 </style>
 {% endblock %}
 
 {% block content %}
 <div class="container-fluid">
-    <!-- Header do Ranking -->
-    <div class="leaderboard-card text-center">
+    <!-- Header -->
+    <div class="leaderboard-header">
         <h1 class="display-4 mb-3">
-            <i class="fas fa-trophy trophy-icon" style="color: #FFD700;"></i>
-            Ranking Nacional - Maratona Brasil
+            <i class="fas fa-trophy" style="color: #FFD700;"></i>
+            Ranking Nacional
         </h1>
-        <p class="lead mb-0">Confira a classificação dos melhores programadores do país!</p>
+        <p class="lead mb-0">Maratona Brasil - Classificação dos Programadores</p>
     </div>
 
     <div class="row">
         <!-- Coluna Principal - Ranking -->
         <div class="col-lg-8">
-            <!-- Filtros/Tabs -->
-            <div class="filter-tabs d-flex justify-content-center">
-                <button class="filter-tab active" onclick="filterRanking('all')">
-                    <i class="fas fa-globe me-2"></i>Geral
-                </button>
-                <button class="filter-tab" onclick="filterRanking('completed')">
-                    <i class="fas fa-check-circle me-2"></i>Finalistas
-                </button>
-                <button class="filter-tab" onclick="filterRanking('recent')">
-                    <i class="fas fa-clock me-2"></i>Recentes
-                </button>
+            <!-- Critérios de Desempate -->
+            <div class="criteria-info">
+                <h6 class="mb-2"><i class="fas fa-info-circle me-2"></i>Critérios de Classificação</h6>
+                <small>
+                    <strong>1º:</strong> Maior pontuação | 
+                    <strong>2º:</strong> Mais desafios completados | 
+                    <strong>3º:</strong> Completou mais rápido | 
+                    <strong>4º:</strong> Menos tentativas | 
+                    <strong>5º:</strong> Maior taxa de sucesso | 
+                    <strong>6º:</strong> Ordem alfabética
+                </small>
             </div>
+            
+            <div class="card">
+                <div class="card-header bg-success text-white">
+                    <h5 class="mb-0">
+                        <i class="fas fa-list-ol me-2"></i>Ranking Geral
+                        <span class="badge bg-light text-dark ms-2">{{ users|length }} participantes</span>
+                    </h5>
+                </div>
+                <div class="card-body p-2">
+                    {% if users %}
+                        {% for user_data in users %}
+                        <div class="rank-card d-flex align-items-center 
+                                    {% if user_data.user == request.user %}current-user{% endif %}
+                                    {% if forloop.counter == 1 %}rank-1{% elif forloop.counter == 2 %}rank-2{% elif forloop.counter == 3 %}rank-3{% else %}rank-other{% endif %}">
+                            
+                            <!-- Posição -->
+                            <div class="rank-position">
+                                {% if forloop.counter <= 3 %}
+                                    <i class="fas fa-crown"></i>
+                                {% else %}
+                                    {{ forloop.counter }}
+                                {% endif %}
+                            </div>
 
-            <!-- Lista do Ranking -->
-            <div id="ranking-list">
-                {% if users %}
-                    {% for user_data in users %}
-                    <div class="user-row d-flex align-items-center {% if user_data.user == request.user %}current-user{% endif %}">
-                        <!-- Posição -->
-                        <div class="rank-position {% if forloop.counter == 1 %}rank-1{% elif forloop.counter == 2 %}rank-2{% elif forloop.counter == 3 %}rank-3{% else %}rank-other{% endif %}">
-                            {% if forloop.counter <= 3 %}
-                                <i class="fas fa-crown"></i>
-                            {% else %}
-                                {{ forloop.counter }}
-                            {% endif %}
-                        </div>
-
-                        <!-- Informações do Usuário -->
-                        <div class="flex-grow-1">
-                            <div class="d-flex justify-content-between align-items-center">
-                                <div>
-                                    <h5 class="mb-1 fw-bold">
-                                        {% if user_data.user.first_name %}
-                                            {{ user_data.user.first_name }} {{ user_data.user.last_name }}
-                                        {% else %}
-                                            {{ user_data.user.username }}
-                                        {% endif %}
-                                        {% if user_data.user == request.user %}
-                                            <span class="badge bg-primary ms-2">Você</span>
-                                        {% endif %}
-                                    </h5>
-                                    <div class="d-flex align-items-center">
-                                        <span class="text-muted me-3">
-                                            <i class="fas fa-star text-warning me-1"></i>
-                                            {{ user_data.total_points }} pontos
-                                        </span>
-                                        <span class="text-muted me-3">
-                                            <i class="fas fa-check-circle text-success me-1"></i>
-                                            {{ user_data.completed_challenges }}/27 desafios
-                                        </span>
+                            <!-- Informações do Usuário -->
+                            <div class="flex-grow-1">
+                                <div class="row align-items-center">
+                                    <div class="col-md-4">
+                                        <h6 class="mb-1 fw-bold">
+                                            {% if user_data.user.first_name %}
+                                                {{ user_data.user.first_name }} {{ user_data.user.last_name }}
+                                            {% else %}
+                                                {{ user_data.user.username }}
+                                            {% endif %}
+                                            {% if user_data.user == request.user %}
+                                                <span class="badge bg-primary ms-2">Você</span>
+                                            {% endif %}
+                                        </h6>
                                         {% if user_data.completed_challenges == 27 %}
                                             <span class="completion-badge">
                                                 <i class="fas fa-trophy me-1"></i>FINALISTA
                                             </span>
                                         {% endif %}
+                                        
+                                        <!-- Detalhes Estatísticos -->
+                                        <div class="detail-stats">
+                                            <span class="stat-item">
+                                                <i class="fas fa-bullseye me-1"></i>{{ user_data.total_attempts }} tentativas
+                                            </span>
+                                            <span class="stat-item">
+                                                <i class="fas fa-percentage me-1"></i>{{ user_data.success_rate }}% sucesso
+                                            </span>
+                                            {% if user_data.completion_time_days < 999999 %}
+                                            <span class="stat-item">
+                                                <i class="fas fa-clock me-1"></i>{{ user_data.completion_time_days }} dias
+                                            </span>
+                                            {% endif %}
+                                        </div>
                                     </div>
-                                </div>
-                                <div class="text-end">
-                                    <div class="progress mb-1" style="width: 150px; height: 8px;">
-                                        <div class="progress-bar bg-success" 
-                                             style="width: {{ user_data.completion_percentage }}%"></div>
+                                    <div class="col-md-2 text-center">
+                                        <div class="fw-bold text-warning">
+                                            <i class="fas fa-star me-1"></i>{{ user_data.total_points }}
+                                        </div>
+                                        <small class="text-muted">pontos</small>
                                     </div>
-                                    <small class="text-muted">{{ user_data.completion_percentage }}% completo</small>
+                                    <div class="col-md-2 text-center">
+                                        <div class="fw-bold text-success">
+                                            <i class="fas fa-check-circle me-1"></i>{{ user_data.completed_challenges }}/27
+                                        </div>
+                                        <small class="text-muted">desafios</small>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <div class="progress mb-1" style="height: 8px;">
+                                            <div class="progress-bar bg-success" 
+                                                 style="width: {{ user_data.completion_percentage }}%"></div>
+                                        </div>
+                                        <small class="text-muted">{{ user_data.completion_percentage }}% completo</small>
+                                    </div>
                                 </div>
                             </div>
                         </div>
-                    </div>
-                    {% endfor %}
-                {% else %}
-                    <div class="text-center py-5">
-                        <i class="fas fa-users fa-3x text-muted mb-3"></i>
-                        <h4 class="text-muted">Nenhum usuário encontrado</h4>
-                        <p class="text-muted">Seja o primeiro a completar um desafio!</p>
-                    </div>
-                {% endif %}
+                        {% endfor %}
+                    {% else %}
+                        <div class="text-center py-5">
+                            <i class="fas fa-users fa-3x text-muted mb-3"></i>
+                            <h4 class="text-muted">Nenhum usuário encontrado</h4>
+                            <p class="text-muted">Seja o primeiro a completar um desafio!</p>
+                        </div>
+                    {% endif %}
+                </div>
             </div>
         </div>
 
         <!-- Sidebar - Estatísticas -->
         <div class="col-lg-4">
             <!-- Suas Estatísticas -->
-            {% if request.user.is_authenticated %}
+            {% if request.user.is_authenticated and user_stats %}
             <div class="card mb-4">
                 <div class="card-header bg-primary text-white">
-                    <h5 class="card-title mb-0">
+                    <h5 class="mb-0">
                         <i class="fas fa-user me-2"></i>Suas Estatísticas
                     </h5>
                 </div>
                 <div class="card-body">
-                    <div class="row text-center">
+                    <div class="row">
                         <div class="col-6 mb-3">
                             <div class="stats-card">
                                 <div class="stats-number">{{ user_stats.position|default:"--" }}</div>
@@ -224,22 +251,36 @@
                         </div>
                         <div class="col-6 mb-3">
                             <div class="stats-card">
-                                <div class="stats-number">{{ user_stats.total_points|default:0 }}</div>
+                                <div class="stats-number">{{ user_stats.total_points }}</div>
                                 <div class="stats-label">Pontos</div>
                             </div>
                         </div>
                         <div class="col-6">
                             <div class="stats-card">
-                                <div class="stats-number">{{ user_stats.completed_challenges|default:0 }}</div>
+                                <div class="stats-number">{{ user_stats.completed_challenges }}</div>
                                 <div class="stats-label">Completados</div>
                             </div>
                         </div>
                         <div class="col-6">
                             <div class="stats-card">
-                                <div class="stats-number">{{ user_stats.completion_percentage|default:0 }}%</div>
+                                <div class="stats-number">{{ user_stats.completion_percentage }}%</div>
                                 <div class="stats-label">Progresso</div>
                             </div>
                         </div>
+                    </div>
+                    
+                    <!-- Estatísticas Detalhadas -->
+                    <div class="mt-3">
+                        <small class="text-muted">
+                            <div class="d-flex justify-content-between mb-1">
+                                <span>Total de tentativas:</span>
+                                <strong>{{ user_stats.total_attempts|default:0 }}</strong>
+                            </div>
+                            <div class="d-flex justify-content-between">
+                                <span>Taxa de sucesso:</span>
+                                <strong>{{ user_stats.success_rate|default:0 }}%</strong>
+                            </div>
+                        </small>
                     </div>
                 </div>
             </div>
@@ -248,29 +289,51 @@
             <!-- Estatísticas Gerais -->
             <div class="card mb-4">
                 <div class="card-header bg-info text-white">
-                    <h5 class="card-title mb-0">
+                    <h5 class="mb-0">
                         <i class="fas fa-chart-bar me-2"></i>Estatísticas Gerais
                     </h5>
                 </div>
                 <div class="card-body">
-                    <ul class="list-group list-group-flush">
-                        <li class="list-group-item d-flex justify-content-between">
-                            <span><i class="fas fa-users text-primary me-2"></i>Total de Participantes</span>
-                            <strong>{{ total_users|default:0 }}</strong>
-                        </li>
-                        <li class="list-group-item d-flex justify-content-between">
-                            <span><i class="fas fa-trophy text-warning me-2"></i>Finalistas</span>
-                            <strong>{{ completed_users|default:0 }}</strong>
-                        </li>
-                        <li class="list-group-item d-flex justify-content-between">
-                            <span><i class="fas fa-code text-success me-2"></i>Total de Submissões</span>
-                            <strong>{{ total_submissions|default:0 }}</strong>
-                        </li>
-                        <li class="list-group-item d-flex justify-content-between">
-                            <span><i class="fas fa-star text-info me-2"></i>Pontos Distribuídos</span>
-                            <strong>{{ total_points|default:0 }}</strong>
-                        </li>
-                    </ul>
+                    <div class="row text-center">
+                        <div class="col-6 mb-3">
+                            <div class="stats-card">
+                                <div class="stats-number text-primary">{{ total_users }}</div>
+                                <div class="stats-label">Participantes</div>
+                            </div>
+                        </div>
+                        <div class="col-6 mb-3">
+                            <div class="stats-card">
+                                <div class="stats-number text-warning">{{ completed_users }}</div>
+                                <div class="stats-label">Finalistas</div>
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <div class="stats-card">
+                                <div class="stats-number text-success">{{ total_submissions }}</div>
+                                <div class="stats-label">Submissões</div>
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <div class="stats-card">
+                                <div class="stats-number text-info">{{ avg_attempts_per_user }}</div>
+                                <div class="stats-label">Tentativas/Usuário</div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Estatísticas Extras -->
+                    <div class="mt-3">
+                        <small class="text-muted">
+                            <div class="d-flex justify-content-between mb-1">
+                                <span>Taxa média de conclusão:</span>
+                                <strong>{{ avg_completion_rate }}%</strong>
+                            </div>
+                            <div class="d-flex justify-content-between">
+                                <span>Total de pontos distribuídos:</span>
+                                <strong>{{ total_points }}</strong>
+                            </div>
+                        </small>
+                    </div>
                 </div>
             </div>
 
@@ -289,34 +352,17 @@
 
 {% block extra_js %}
 <script>
-    function filterRanking(type) {
-        // Remove active class from all tabs
-        document.querySelectorAll('.filter-tab').forEach(tab => {
-            tab.classList.remove('active');
-        });
-        
-        // Add active class to clicked tab
-        event.target.classList.add('active');
-        
-        // TODO: Implementar filtros via AJAX se necessário
-        console.log('Filtro selecionado:', type);
-        
-        // Por enquanto, apenas visual
-        // Você pode implementar filtros AJAX aqui se quiser
-    }
-    
-    // Animação de entrada
     document.addEventListener('DOMContentLoaded', function() {
-        const userRows = document.querySelectorAll('.user-row');
-        userRows.forEach((row, index) => {
-            row.style.opacity = '0';
-            row.style.transform = 'translateY(20px)';
+        const cards = document.querySelectorAll('.rank-card');
+        cards.forEach((card, index) => {
+            card.style.opacity = '0';
+            card.style.transform = 'translateY(20px)';
             
             setTimeout(() => {
-                row.style.transition = 'all 0.5s ease';
-                row.style.opacity = '1';
-                row.style.transform = 'translateY(0)';
-            }, index * 100);
+                card.style.transition = 'all 0.5s ease';
+                card.style.opacity = '1';
+                card.style.transform = 'translateY(0)';
+            }, index * 50);
         });
     });
 </script>
